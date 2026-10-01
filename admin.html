@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Invoice Link Generator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <form class="card" id="form" autocomplete="off">
+      <h1>Invoice Link Generator</h1>
+      <p class="muted small">Fill in the fields and click <strong>Generate Link</strong> to get a ready-to-send invoice URL.</p>
+
+      <div class="grid">
+        <div>
+          <label for="inv">Invoice number</label>
+          <input id="inv" placeholder="INV-001" />
+        </div>
+        <div>
+          <label for="cur">Currency</label>
+          <select id="cur">
+            <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
+            <option>AUD</option><option>JPY</option><option>KRW</option><option>SGD</option>
+          </select>
+        </div>
+        <div>
+          <label for="client">Client name</label>
+          <input id="client" placeholder="Acme Corp" />
+        </div>
+        <div>
+          <label for="client_email">Client email (optional)</label>
+          <input id="client_email" type="email" placeholder="billing@acme.com" />
+        </div>
+        <div>
+          <label for="date">Invoice date</label>
+          <input id="date" type="date" />
+        </div>
+        <div>
+          <label for="due">Due date</label>
+          <input id="due" type="date" />
+        </div>
+
+        <div class="full">
+          <label>Line items</label>
+          <div class="item-row muted small" style="margin-bottom:4px">
+            <span>Description</span><span>Qty</span><span>Rate</span><span></span>
+          </div>
+          <div id="items"></div>
+          <button type="button" class="btn secondary" id="addItem">+ Add item</button>
+        </div>
+
+        <div>
+          <label for="total">Total override (optional)</label>
+          <input id="total" type="number" step="0.01" min="0" placeholder="Auto from items" />
+        </div>
+        <div>
+          <label>Calculated total</label>
+          <input id="calc" readonly tabindex="-1" />
+        </div>
+
+        <div class="full">
+          <label for="notes">Notes (optional)</label>
+          <textarea id="notes" placeholder="Thank you for your business!"></textarea>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn">Generate Link</button>
+        <button type="button" class="btn secondary" id="reset">Clear</button>
+      </div>
+
+      <div id="result" hidden>
+        <div class="output">
+          <input id="link" readonly />
+          <button type="button" class="copy-btn" id="copyLink">Copy</button>
+        </div>
+        <div class="btn-row">
+          <a class="btn secondary" id="openLink" target="_blank" rel="noopener">Open invoice</a>
+        </div>
+      </div>
+    </form>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="invoice.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const itemsBox = $("items");
+
+    $("cur").value = (window.INVOICE_CONFIG.defaultCurrency || "USD").toUpperCase();
+    $("date").value = new Date().toLocaleDateString("en-CA");
+
+    function addItem(desc = "", qty = 1, price = "") {
+      const row = el("div", { class: "item-row" },
+        el("input", { placeholder: "Service or product", "data-f": "desc" }),
+        el("input", { type: "number", step: "any", min: "0", "data-f": "qty" }),
+        el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", "data-f": "price" }),
+        el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×"),
+      );
+      row.querySelector('[data-f="desc"]').value = desc;
+      row.querySelector('[data-f="qty"]').value = qty;
+      row.querySelector('[data-f="price"]').value = price;
+      row.querySelector("button").addEventListener("click", () => { row.remove(); updateCalc(); });
+      itemsBox.append(row);
+    }
+
+    function readItems() {
+      return [...itemsBox.querySelectorAll(".item-row")]
+        .map((r) => [
+          r.querySelector('[data-f="desc"]').value.trim(),
+          Number(r.querySelector('[data-f="qty"]').value) || 0,
+          Number(r.querySelector('[data-f="price"]').value) || 0,
+        ])
+        .filter(([desc]) => desc);
+    }
+
+    function updateCalc() {
+      const sum = readItems().reduce((s, [, q, pr]) => s + q * pr, 0);
+      $("calc").value = formatMoney(sum, $("cur").value);
+    }
+
+    function buildLink() {
+      const base = new URL("index.html", location.href);
+      const params = new URLSearchParams();
+      const set = (k, v) => { if (v !== "" && v != null) params.set(k, v); };
+
+      set("inv", $("inv").value.trim());
+      set("client", $("client").value.trim());
+      set("client_email", $("client_email").value.trim());
+      set("date", $("date").value);
+      set("due", $("due").value);
+      set("cur", $("cur").value);
+      const items = readItems();
+      if (items.length) params.set("items", JSON.stringify(items));
+      set("total", $("total").value);
+      set("notes", $("notes").value.trim());
+
+      base.search = params.toString();
+      return base.toString();
+    }
+
+    itemsBox.addEventListener("input", updateCalc);
+    $("cur").addEventListener("change", updateCalc);
+    $("addItem").addEventListener("click", () => addItem());
+
+    $("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const link = buildLink();
+      $("link").value = link;
+      $("openLink").href = link;
+      $("result").hidden = false;
+      $("link").select();
+    });
+
+    $("copyLink").addEventListener("click", async (e) => {
+      await copyText($("link").value);
+      flashCopied(e.currentTarget);
+    });
+
+    $("reset").addEventListener("click", () => {
+      $("form").reset();
+      itemsBox.innerHTML = "";
+      addItem();
+      $("cur").value = (window.INVOICE_CONFIG.defaultCurrency || "USD").toUpperCase();
+      $("date").value = new Date().toLocaleDateString("en-CA");
+      $("result").hidden = true;
+      updateCalc();
+    });
+
+    addItem();
+    updateCalc();
+  </script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Invoice</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="card" id="invoice"></section>
+    <section class="card" id="payment"></section>
+    <div class="no-print btn-row" style="justify-content:center">
+      <button class="btn secondary" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="invoice.js"></script>
+  <script>
+    const cfg = window.INVOICE_CONFIG;
+    const p = new URLSearchParams(location.search);
+
+    const currency = (p.get("cur") || cfg.defaultCurrency || "USD").toUpperCase();
+    const items = parseItems(p.get("items"));
+    const itemsTotal = items.reduce((sum, i) => sum + i.qty * i.price, 0);
+    const totalParam = p.get("total");
+    const total = totalParam !== null && totalParam !== "" && !isNaN(Number(totalParam))
+      ? Number(totalParam)
+      : itemsTotal;
+    const invoiceNo = p.get("inv") || "";
+
+    document.title = invoiceNo ? `Invoice ${invoiceNo} – ${cfg.business.name}` : `Invoice – ${cfg.business.name}`;
+
+    // ---------- Invoice ----------
+    const inv = document.getElementById("invoice");
+
+    const metaRows = [
+      ["Invoice #", invoiceNo],
+      ["Date", formatDate(p.get("date"))],
+      ["Due", formatDate(p.get("due"))],
+    ].filter(([, v]) => v);
+
+    inv.append(
+      el("div", { class: "header" },
+        el("div", {},
+          el("h1", {}, "Invoice"),
+          el("div", {}, el("strong", {}, cfg.business.name)),
+          cfg.business.email && el("div", { class: "muted small" }, cfg.business.email),
+          cfg.business.address && el("div", { class: "muted small" }, cfg.business.address),
+        ),
+        el("div", { class: "meta" },
+          ...metaRows.map(([k, v]) => el("div", { class: "meta-row" }, el("span", {}, k), el("span", {}, v))),
+        ),
+      ),
+    );
+
+    if (p.get("client")) {
+      inv.append(
+        el("div", { class: "billto" },
+          el("div", { class: "muted small" }, "Bill to"),
+          el("div", {}, el("strong", {}, p.get("client"))),
+          p.get("client_email") && el("div", { class: "muted small" }, p.get("client_email")),
+        ),
+      );
+    }
+
+    if (items.length) {
+      const tbody = el("tbody");
+      for (const i of items) {
+        tbody.append(el("tr", {},
+          el("td", {}, i.desc),
+          el("td", { class: "num" }, i.qty),
+          el("td", { class: "num" }, formatMoney(i.price, currency)),
+          el("td", { class: "num" }, formatMoney(i.qty * i.price, currency)),
+        ));
+      }
+      inv.append(el("table", {},
+        el("thead", {}, el("tr", {},
+          el("th", {}, "Description"),
+          el("th", { class: "num" }, "Qty"),
+          el("th", { class: "num" }, "Rate"),
+          el("th", { class: "num" }, "Amount"),
+        )),
+        tbody,
+      ));
+    }
+
+    inv.append(el("div", { class: "total-row" },
+      el("span", {}, "Total due"),
+      el("span", {}, formatMoney(total, currency)),
+    ));
+
+    if (p.get("notes")) inv.append(el("div", { class: "notes small" }, p.get("notes")));
+
+    // ---------- Payment ----------
+    const pay = document.getElementById("payment");
+
+    function copyField(label, value) {
+      if (!value) return null;
+      const btn = el("button", { class: "copy-btn", type: "button" }, "Copy");
+      btn.addEventListener("click", async () => {
+        try { await copyText(String(value)); flashCopied(btn); }
+        catch { btn.textContent = "Copy failed"; }
+      });
+      return el("div", { class: "field" },
+        el("div", {}, el("div", { class: "label" }, label), el("div", { class: "value" }, value)),
+        btn,
+      );
+    }
+
+    const amountPlain = total.toFixed(2);
+    const reference = invoiceNo ? `Invoice ${invoiceNo}` : "";
+
+    const methods = [];
+    if (cfg.paypal && cfg.paypal.enabled) {
+      const panel = el("div", { class: "pay-panel" },
+        copyField("PayPal email", cfg.paypal.email),
+        copyField(`Amount (${currency})`, amountPlain),
+        copyField("Note / reference", reference),
+      );
+      if (cfg.paypal.meLink && /^https:\/\//.test(cfg.paypal.meLink)) {
+        const href = `${cfg.paypal.meLink.replace(/\/+$/, "")}/${amountPlain}${currency}`;
+        panel.append(el("div", { class: "btn-row no-print" },
+          el("a", { class: "btn", href, target: "_blank", rel: "noopener" }, "Pay with PayPal"),
+        ));
+      }
+      methods.push(["PayPal", panel]);
+    }
+    if (cfg.ach && cfg.ach.enabled) {
+      const a = cfg.ach;
+      methods.push(["ACH Bank Transfer (US)", el("div", { class: "pay-panel" },
+        copyField("Account holder", a.accountHolder),
+        copyField("Bank name", a.bankName),
+        copyField("Routing number (ABA)", a.routingNumber),
+        copyField("Account number", a.accountNumber),
+        copyField("Account type", a.accountType),
+        copyField("Bank address", a.bankAddress),
+        copyField(`Amount (${currency})`, amountPlain),
+        copyField("Payment reference", reference),
+      )]);
+    }
+
+    pay.append(el("h2", {}, "How to pay"));
+    if (!methods.length) {
+      pay.append(el("p", { class: "muted" }, "No payment methods configured."));
+    } else {
+      const tabs = el("div", { class: "method-tabs no-print" });
+      const panels = methods.map(([, panel]) => panel);
+      methods.forEach(([name, panel], idx) => {
+        const btn = el("button", { type: "button" }, name);
+        btn.addEventListener("click", () => {
+          tabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          panels.forEach((pn) => (pn.hidden = pn !== panel));
+        });
+        tabs.append(btn);
+        panel.hidden = idx !== 0;
+        if (idx === 0) btn.classList.add("active");
+      });
+      if (methods.length > 1) pay.append(tabs);
+      pay.append(...panels);
+      if (reference) {
+        pay.append(el("p", { class: "muted small" },
+          `Please include "${reference}" as the payment reference so it can be matched to this invoice.`));
+      }
+    }
+  </script>
+</body>
+</html>
