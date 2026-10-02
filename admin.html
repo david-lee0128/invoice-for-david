@@ -468,11 +468,13 @@
           el("td", {}, el("strong", {}, inv.inv || "—"), el("div", { class: "muted small" }, week)),
           el("td", {}, inv.client || "—"),
           el("td", {}, el("div", { class: "num-left" }, formatMoney(inv.total || 0, cur)), ...parts),
-          el("td", {}, el("div", { class: "pills" },
-            el("span", { class: `pill ${r.status}` }, STATUS_LABEL[r.status] || r.status),
-            r.disabled && el("span", { class: "pill disabled" }, "Link disabled"),
-            archived && el("span", { class: "pill archived" }, `Archived ${new Date(r.archivedAt).toLocaleDateString()}`),
-          )),
+          // Archived implies paid with the link disabled, so it's the only tag shown.
+          el("td", {}, el("div", { class: "pills" }, ...(archived
+            ? [el("span", { class: "pill archived" }, `Archived ${new Date(r.archivedAt).toLocaleDateString()}`)]
+            : [
+                el("span", { class: `pill ${r.status}` }, STATUS_LABEL[r.status] || r.status),
+                r.disabled && el("span", { class: "pill disabled" }, "Link disabled"),
+              ]))),
           el("td", {}, actions),
         );
       };
