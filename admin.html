@@ -209,18 +209,19 @@
             input.value = values[i] ?? "";
             return input;
           });
+          const cells = [...inputs];
           let side;
           if (locked) {
             inputs[0].readOnly = true;
             inputs[0].classList.add("locked");
             inputs[1].placeholder = hint || (required ? "Required" : "Optional");
-            side = required
-              ? el("span", { class: "lock-mark", title: "Required" }, "*")
-              : el("span", { class: "lock-mark opt-mark", title: "Optional" }, "optional");
+            // Optional fixed fields get a small tag inside the label box; required ones a * beside the row.
+            if (!required) cells[0] = el("div", { class: "locked-label" }, inputs[0], el("span", { class: "opt" }, "optional"));
+            side = el("span", { class: "lock-mark", title: required ? "Required" : "" }, required ? "*" : "");
           } else {
             side = el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×");
           }
-          const row = el("div", { class: "item-row", style: `grid-template-columns:${template}` }, ...inputs, side);
+          const row = el("div", { class: "item-row", style: `grid-template-columns:${template}` }, ...cells, side);
           if (!locked) side.addEventListener("click", () => row.remove());
           container.append(row);
         },
