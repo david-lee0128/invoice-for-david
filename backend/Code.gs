@@ -5,6 +5,17 @@ const SHEET_NAME = "Invoices";
 const HEADERS = ["id", "created", "status", "paidAt", "paidInfo", "data"];
 const COL = { id: 1, created: 2, status: 3, paidAt: 4, paidInfo: 5, data: 6 };
 const METHODS = { paypal: "PayPal", ach: "ACH bank transfer (US)" };
+// Fields every method always has. Labels are fixed; extra fields can be added after them.
+const REQUIRED_FIELDS = {
+  paypal: ["PayPal address"],
+  ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
+};
+// Older label names, mapped onto the current required labels.
+const LABEL_ALIASES = {
+  "PayPal email": "PayPal address",
+  "Account holder": "Beneficiary name",
+  "Routing number (ABA)": "Routing (ABA)",
+};
 
 // Run once from the Apps Script editor. Prints your admin key in the execution log.
 function setup() {
@@ -49,6 +60,7 @@ const PUBLIC_ACTIONS = { get: getInvoice_, paid: markPaid_ };
 const ADMIN_ACTIONS = {
   verify: () => ({ ok: true }),
   create: createInvoice_,
+  update: updateInvoice_,
   list: listInvoices_,
   reset: (b) => setStatus_(b.id, "reset"),
   disable: (b) => setStatus_(b.id, "disable"),
@@ -93,7 +105,6 @@ function getInvoice_(b) {
         amount: p.amount,
         paidAt: paid ? paid.at : "",
         fields: paid ? [] : s[p.method].fields,
-        link: paid ? "" : s[p.method].link,
       };
     }),
   };
@@ -140,7 +151,7 @@ function notify_(inv, part, info, status) {
     ? parts.length > 1 ? "All payments for this invoice are now marked sent." : "This invoice is now marked paid."
     : "Still waiting on: " + parts.filter((p) => p.method !== part.method).map((p) => METHODS[p.method] + " " + money(p.amount)).join(", ");
 
-  const subject = "Paid via " + METHODS[part.method] + ": " + (inv.inv || "Invoice") + " - " + (inv.client || "client") + " - " + money(part.amount);
+  const subject = "Payment sent: " + (inv.inv ? "Invoice " + inv.inv : "Invoice") + (inv.client ? " - " + inv.client : "");
   const body = [
     "Your client marked a payment as sent. Check that the money has arrived before you treat it as settled.",
     "",
@@ -157,27 +168,46 @@ function notify_(inv, part, info, status) {
 
   const to = s.notifyEmail || Session.getEffectiveUser().getEmail();
   if (to) MailApp.sendEmail(to, subject, body);
-
-  if (s.ntfyTopic) {
-    UrlFetchApp.fetch("https://ntfy.sh/" + encodeURIComponent(s.ntfyTopic), {
-      method: "post",
-      payload: body,
-      headers: { Title: subject.replace(/[^\x20-\x7E]/g, "?") },
-      muteHttpExceptions: true,
-    });
-  }
 }
 
 // ---------- Admin ----------
 
 function createInvoice_(b) {
   const invoice = cleanInvoice_(b.invoice);
-  if (!invoice.payments.length) return { ok: false, error: "Add an amount for PayPal, ACH, or both." };
+  const problem = invoiceProblem_(invoice);
+  if (problem) return { ok: false, error: problem };
   return withLock_(() => {
     const id = randomId_(24);
     sheet_().appendRow([id, new Date().toISOString(), "open", "", "", JSON.stringify(invoice)]);
     return { ok: true, id: id };
   });
+}
+
+// Edits an invoice in place, keeping its link. Only allowed before any payment is confirmed.
+function updateInvoice_(b) {
+  const invoice = cleanInvoice_(b.invoice);
+  const problem = invoiceProblem_(invoice);
+  if (problem) return { ok: false, error: problem };
+  return withLock_(() => {
+    const row = findRow_(b.id);
+    if (!row) return { ok: false, error: "not_found" };
+    const rec = readRow_(row);
+    if (Object.keys(rec.paidInfo || {}).length) return { ok: false, error: "This invoice already has a confirmed payment and can't be edited." };
+    sheet_().getRange(row, COL.data).setValue(JSON.stringify(invoice));
+    return { ok: true, id: b.id };
+  });
+}
+
+function invoiceProblem_(invoice) {
+  if (!invoice.payments.length) return "Add an amount for PayPal, ACH, or both.";
+  const s = settings_();
+  for (const p of invoice.payments) {
+    const missing = s[p.method].fields
+      .filter((f) => REQUIRED_FIELDS[p.method].indexOf(f[0]) !== -1 && !f[1])
+      .map((f) => f[0]);
+    if (missing.length) return "Fill in your " + METHODS[p.method] + " details in Payment settings first (missing: " + missing.join(", ") + ").";
+  }
+  return "";
 }
 
 function listInvoices_() {
@@ -294,18 +324,8 @@ function defaultSettings_() {
   return {
     business: { name: "", email: "", address: "" },
     notifyEmail: "",
-    ntfyTopic: "",
-    paypal: { link: "", fields: [["PayPal email", ""]] },
-    ach: {
-      link: "",
-      fields: [
-        ["Account holder", ""],
-        ["Bank name", ""],
-        ["Routing number (ABA)", ""],
-        ["Account number", ""],
-        ["Account type", "Checking"],
-      ],
-    },
+    paypal: { fields: REQUIRED_FIELDS.paypal.map((l) => [l, ""]) },
+    ach: { fields: REQUIRED_FIELDS.ach.map((l) => [l, l === "Account type" ? "Checking" : ""]) },
   };
 }
 
@@ -337,24 +357,30 @@ function cleanInvoice_(d) {
 function cleanSettings_(d) {
   d = d || {};
   const biz = d.business || {};
-  const defaults = defaultSettings_();
-  const method = (m, fallback) => {
-    m = m || fallback;
-    const link = str_(m.link, 500).trim();
-    return {
-      link: /^https:\/\//i.test(link) ? link : "",
-      fields: arr_(m.fields, 30)
-        .map((f) => [str_(f[0], 100), str_(f[1], 500)])
-        .filter((f) => f[0] || f[1]),
-    };
-  };
   return {
     business: { name: str_(biz.name, 200), email: str_(biz.email, 200), address: str_(biz.address, 500) },
     notifyEmail: str_(d.notifyEmail, 200).trim(),
-    ntfyTopic: str_(d.ntfyTopic, 100).trim(),
-    paypal: method(d.paypal, defaults.paypal),
-    ach: method(d.ach, defaults.ach),
+    paypal: cleanMethod_("paypal", d.paypal),
+    ach: cleanMethod_("ach", d.ach),
   };
+}
+
+// Required fields always come first with their fixed labels; any other fields follow.
+function cleanMethod_(key, m) {
+  const rows = arr_(m && m.fields, 40).map((f) => {
+    const label = str_(f[0], 100).trim();
+    return [LABEL_ALIASES[label] || label, str_(f[1], 500).trim()];
+  });
+  const required = REQUIRED_FIELDS[key];
+  const fields = required.map((label) => {
+    const found = rows.find((r) => r[0] === label);
+    return [label, found ? found[1] : ""];
+  });
+  rows
+    .filter((r) => required.indexOf(r[0]) === -1 && (r[0] || r[1]))
+    .slice(0, 30)
+    .forEach((r) => fields.push(r));
+  return { fields: fields };
 }
 
 function withLock_(fn) {

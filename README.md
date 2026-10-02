@@ -4,8 +4,8 @@ A lightweight invoice page for weekly billing, hosted for free on GitHub Pages, 
 
 - **Admin page** (`admin.html`, protected by a secret key): write up the week's work, choose **PayPal only**, **ACH (Payoneer receiving account) only**, or **split across both**, and generate a link.
 - **Invoice page** (`index.html#<id>`): the client sees the work summary and only the payment method(s) on that invoice, with one-click copy buttons. They confirm each payment with an **"I've sent this payment"** button.
-- **Notifications:** you get an email (and optionally a phone push via [ntfy](https://ntfy.sh)) every time the client confirms a payment.
-- **Link control:** reset payments to unpaid, disable or re-enable a link, issue a new link (the old one stops working), or delete the invoice.
+- **Notifications:** you get an email every time the client confirms a payment.
+- **Link control:** edit an unpaid invoice (same link), reset payments to unpaid, disable or re-enable a link, issue a new link (the old one stops working), or delete the invoice.
 - **Download PDF:** the client can save a clean PDF that contains only the invoice: work, amounts and payment details, with no buttons and no browser header or footer.
 - **Next week:** copy an invoice forward one week, with the invoice number incremented.
 
@@ -43,7 +43,7 @@ Links are random 24-character IDs, so they contain no invoice data. Your payment
    window.INVOICE_CONFIG = { apiUrl: "https://script.google.com/macros/s/XXXX/exec" };
    ```
 2. Commit and push, then enable **Settings → Pages → Deploy from a branch → `main` / root**.
-3. Open `https://<username>.github.io/<repo>/admin.html`, sign in with the admin key, and fill in **Payment settings**: your name, PayPal email, and the US ACH details from Payoneer (**Receive → Receiving accounts**).
+3. Open `https://<username>.github.io/<repo>/admin.html`, sign in with the admin key, and fill in **Payment settings**: your name, PayPal address, and the US ACH details from Payoneer (**Receive → Receiving accounts**). These are saved in Apps Script **Project Settings → Script properties**, not on GitHub.
 
 ## Weekly use
 
@@ -52,7 +52,3 @@ Links are random 24-character IDs, so they contain no invoice data. Your payment
 3. **Invoices** tab: check status (Unpaid, Partly paid, Paid, Link disabled), and use **Next week** to start the following invoice.
 
 Client confirmations are only what the client reports. Always check PayPal or Payoneer to make sure the money has actually arrived.
-
-## Phone push notifications (optional)
-
-Install the ntfy app, subscribe to a hard-to-guess topic name (e.g. `invoices-k38fj2x9`), and put the same name in **Payment settings → ntfy.sh topic**. Anyone who knows the topic name can read the notifications, so make it unguessable.

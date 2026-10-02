@@ -157,7 +157,7 @@
         ));
       }
 
-      if (inv.notes) card.append(el("div", { class: "notes small" }, inv.notes));
+      if (inv.notes) card.append(el("p", { class: "notes" }, inv.notes));
       return card;
     }
 
@@ -196,26 +196,19 @@
         return card;
       }
 
-      card.append(
+      // copyField returns null for empty values; DOM append would print those as "null".
+      card.append(...[
         ...p.fields.map(([label, value]) => copyField(label, value)),
         copyField(`Amount (${cur})`, amount),
         copyField("Payment reference", reference),
-      );
-      if (p.link) {
-        const href = p.link
-          .replaceAll("{amount}", amount)
-          .replaceAll("{currency}", cur)
-          .replaceAll("{invoice}", encodeURIComponent(reference));
-        card.append(el("div", { class: "btn-row" },
-          el("a", { class: "btn", href, target: "_blank", rel: "noopener" }, `Open ${p.name}`)));
-      }
+      ].filter(Boolean));
 
-      const open = el("button", { class: "btn ok", type: "button" }, `I've sent this ${p.name} payment`);
-      const ref = el("input", { placeholder: p.method === "paypal" ? "PayPal transaction ID (optional)" : "Bank confirmation number (optional)" });
+      const open = el("button", { class: "btn blue", type: "button" }, `I've sent this ${p.name} payment`);
+      const ref = el("input", { placeholder: p.method === "paypal" ? "PayPal transaction ID" : "Bank confirmation number" });
       const status = el("p", { class: "small" });
       const confirm = el("button", { class: "btn ok", type: "submit" }, "Confirm payment sent");
       const form = el("form", { hidden: "", class: "confirm-form" },
-        el("label", {}, "Transaction reference"), ref,
+        el("label", {}, "Transaction reference", el("span", { class: "opt" }, "optional")), ref,
         el("div", { class: "btn-row" }, confirm),
         status,
       );

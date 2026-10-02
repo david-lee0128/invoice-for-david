@@ -32,10 +32,14 @@
         <button type="button" class="btn secondary small-btn" id="logout">Sign out</button>
       </div>
 
-      <!-- New invoice -->
+      <!-- New / edit invoice -->
       <form class="card" id="tab-create" autocomplete="off">
-        <h1>New weekly invoice</h1>
+        <h1 id="formTitle">New weekly invoice</h1>
         <p class="hint">Fields marked with <span class="req">*</span> are required.</p>
+        <div class="banner split" id="editBanner" hidden>
+          Editing <strong id="editName"></strong>. Saving keeps the same link.
+          <button type="button" class="copy-btn" id="cancelEdit">Cancel edit</button>
+        </div>
 
         <h2 class="section-title">Invoice details</h2>
         <div class="grid">
@@ -50,7 +54,12 @@
           <div><label for="client">Client name</label><input id="client" placeholder="Who is this invoice for?" /></div>
           <div><label for="client_email">Client email <span class="opt">optional</span></label><input id="client_email" type="email" placeholder="billing@company.com" /></div>
           <div><label for="date">Invoice date</label><input id="date" type="date" /></div>
-          <div><label for="due">Due date <span class="opt">optional</span></label><input id="due" type="date" /></div>
+          <div><label for="due">Due date <span class="opt">optional – next day by default</span></label><input id="due" type="date" /></div>
+          <div class="full">
+            <label>Custom fields <span class="opt">optional – shown next to the invoice number, e.g. "Contract", "PO number"</span></label>
+            <div id="custom"></div>
+            <button type="button" class="btn secondary small-btn" id="addCustom">+ Add field</button>
+          </div>
         </div>
 
         <hr />
@@ -83,11 +92,6 @@
         <hr />
         <h2 class="section-title">Extras</h2>
         <div class="grid">
-          <div class="full">
-            <label>Custom fields <span class="opt">optional – shown next to the invoice number, e.g. "Contract", "PO number"</span></label>
-            <div id="custom"></div>
-            <button type="button" class="btn secondary small-btn" id="addCustom">+ Add field</button>
-          </div>
           <div class="full"><label for="notes">Notes <span class="opt">optional</span></label><textarea id="notes" placeholder="Anything else the client should know."></textarea></div>
         </div>
 
@@ -98,6 +102,7 @@
         <p class="small error" id="createError"></p>
 
         <div id="result" hidden>
+          <p class="small success" id="resultMsg"></p>
           <div class="output">
             <input id="link" readonly />
             <button type="button" class="copy-btn" id="copyLink">Copy</button>
@@ -119,12 +124,13 @@
       <!-- Settings -->
       <form class="card" id="tab-settings" hidden autocomplete="off">
         <h1>Payment settings</h1>
-        <p class="hint">Stored in your private backend. Clients only see the method(s) you put on their invoice.</p>
+        <p class="hint">Fields marked with <span class="req">*</span> are required. Saved privately in your Google Apps Script backend
+          (Project Settings → Script properties), not on GitHub. Clients only see the method(s) on their invoice.</p>
 
         <h2 class="section-title">Your business</h2>
         <div class="grid">
-          <div><label for="bizName">Name</label><input id="bizName" /></div>
-          <div><label for="bizEmail">Email</label><input id="bizEmail" type="email" /></div>
+          <div><label for="bizName">Name <span class="req">*</span></label><input id="bizName" placeholder="Your name or business name" /></div>
+          <div><label for="bizEmail">Email <span class="opt">optional</span></label><input id="bizEmail" type="email" placeholder="Shown on the invoice" /></div>
           <div class="full"><label for="bizAddress">Address <span class="opt">optional</span></label><textarea id="bizAddress"></textarea></div>
         </div>
 
@@ -132,22 +138,25 @@
         <h2 class="section-title">Notifications</h2>
         <div class="grid">
           <div>
-            <label for="notifyEmail">Email me at</label>
-            <input id="notifyEmail" type="email" placeholder="Defaults to your Google account" />
-          </div>
-          <div>
-            <label for="ntfyTopic">ntfy.sh topic <span class="opt">optional phone push</span></label>
-            <input id="ntfyTopic" placeholder="e.g. invoices-k38fj2x9" />
+            <label for="notifyEmail">Email me at <span class="opt">optional – defaults to your Google account</span></label>
+            <input id="notifyEmail" type="email" placeholder="you@example.com" />
           </div>
         </div>
 
         <hr />
-        <h2 class="section-title">PayPal</h2>
+        <div class="method-head">
+          <h2 class="section-title">PayPal</h2>
+          <button type="button" class="icon-btn reset-btn" data-reset="paypal" title="Reset to the default fields">↻</button>
+        </div>
         <div class="method-box" id="paypalBox"></div>
-        <h2 class="section-title mt">ACH bank transfer <span class="opt">Payoneer receiving account</span></h2>
+
+        <div class="method-head mt">
+          <h2 class="section-title">ACH bank transfer <span class="opt">Payoneer receiving account</span></h2>
+          <button type="button" class="icon-btn reset-btn" data-reset="ach" title="Reset to the default fields">↻</button>
+        </div>
         <div class="method-box" id="achBox"></div>
-        <p class="muted small">Amount and payment reference are added automatically. The optional button link must start with https:// and can use
-          <code>{amount}</code>, <code>{currency}</code> and <code>{invoice}</code>, e.g. <code>https://paypal.me/yourname/{amount}{currency}</code>.</p>
+        <p class="muted small">Required fields can't be renamed or removed. ↻ removes any extra fields you added; required values are kept.
+          Amount and payment reference are added to every invoice automatically.</p>
 
         <div class="btn-row"><button type="submit" class="btn" id="saveSettings">Save settings</button></div>
         <p class="small" id="settingsStatus"></p>
@@ -162,23 +171,37 @@
     const isoDate = (d) => d.toLocaleDateString("en-CA");
     const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoDate(d); };
     const METHOD_NAMES = { paypal: "PayPal", ach: "ACH" };
+    // Must match REQUIRED_FIELDS in backend/Code.gs.
+    const REQUIRED_FIELDS = {
+      paypal: ["PayPal address"],
+      ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
+    };
     let adminKey = localStorage.getItem("invoiceAdminKey") || "";
+    let editingId = null;
+    let dueTouched = false;
 
     const adminApi = (action, payload = {}) => api(action, { key: adminKey, ...payload });
 
-    // A list of input rows that can be added and removed. cols: [{ placeholder, width }]
+    // A list of label/value rows. Locked rows have a fixed label and can't be removed.
     function rowEditor(container, cols) {
       const template = [...cols.map((c) => c.width || "1fr"), "36px"].join(" ");
       return {
-        add(values = []) {
+        add(values = [], { locked = false } = {}) {
           const inputs = cols.map((c, i) => {
             const input = el("input", { placeholder: c.placeholder || "" });
             input.value = values[i] ?? "";
             return input;
           });
-          const remove = el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×");
-          const row = el("div", { class: "item-row", style: `grid-template-columns:${template}` }, ...inputs, remove);
-          remove.addEventListener("click", () => row.remove());
+          let side;
+          if (locked) {
+            inputs[0].readOnly = true;
+            inputs[0].classList.add("locked");
+            side = el("span", { class: "lock-mark", title: "Required" }, "*");
+          } else {
+            side = el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×");
+          }
+          const row = el("div", { class: "item-row", style: `grid-template-columns:${template}` }, ...inputs, side);
+          if (!locked) side.addEventListener("click", () => row.remove());
           container.append(row);
         },
         read() {
@@ -220,7 +243,7 @@
     }
     document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
-    // ---------- New invoice ----------
+    // ---------- New / edit invoice ----------
     const custom = rowEditor($("custom"), [{ placeholder: "Label" }, { placeholder: "Value", width: "2fr" }]);
 
     const payMode = () => document.querySelector('input[name="payMode"]:checked').value;
@@ -256,6 +279,14 @@
       return [start, addDays(start, 6)];
     }
 
+    function setEditing(id, label) {
+      editingId = id;
+      $("editBanner").hidden = !id;
+      $("editName").textContent = label || "";
+      $("formTitle").textContent = id ? "Edit invoice" : "New weekly invoice";
+      $("generate").textContent = id ? "Save changes" : "Generate Link";
+    }
+
     function resetForm() {
       $("tab-create").reset();
       custom.clear();
@@ -263,31 +294,53 @@
       $("weekStart").value = start;
       $("weekEnd").value = end;
       $("date").value = isoDate(new Date());
+      $("due").value = addDays($("date").value, 1);
+      dueTouched = false;
       $("result").hidden = true;
       $("createError").textContent = "";
+      setEditing(null);
       updatePayment();
+    }
+
+    function fillForm(inv) {
+      for (const k of ["inv", "client", "client_email", "date", "due", "weekStart", "weekEnd", "work", "notes"]) $(k).value = inv[k] || "";
+      $("cur").value = inv.cur || "USD";
+      custom.clear();
+      (inv.custom || []).forEach((r) => custom.add(r));
+      const amounts = {};
+      (inv.payments || []).forEach((p) => (amounts[p.method] = p.amount));
+      setPayment(amounts);
+      dueTouched = true;
+    }
+
+    function editInvoice(r) {
+      resetForm();
+      fillForm(r.invoice || {});
+      setEditing(r.id, r.invoice.inv || "this invoice");
+      showTab("create");
+      window.scrollTo(0, 0);
     }
 
     // Pre-fills the form from a past invoice, moved forward one week.
     function nextWeekFrom(inv) {
       resetForm();
-      for (const k of ["client", "client_email", "notes"]) $(k).value = inv[k] || "";
-      $("cur").value = inv.cur || "USD";
+      fillForm({ ...inv, work: "", date: "", due: "" });
       $("inv").value = (inv.inv || "").replace(/(\d+)(?!.*\d)/, (n) => String(Number(n) + 1).padStart(n.length, "0"));
+      $("date").value = isoDate(new Date());
+      $("due").value = addDays($("date").value, 1);
+      dueTouched = false;
       if (inv.weekStart) $("weekStart").value = addDays(inv.weekStart, 7);
       if (inv.weekEnd) $("weekEnd").value = addDays(inv.weekEnd, 7);
-      if (inv.due) $("due").value = addDays(inv.due, 7);
-      (inv.custom || []).forEach((r) => custom.add(r));
-      const amounts = {};
-      (inv.payments || []).forEach((p) => (amounts[p.method] = p.amount));
-      setPayment(amounts);
     }
 
+    $("date").addEventListener("change", () => { if (!dueTouched && $("date").value) $("due").value = addDays($("date").value, 1); });
+    $("due").addEventListener("input", () => (dueTouched = true));
     document.querySelectorAll('input[name="payMode"]').forEach((r) => r.addEventListener("change", updatePayment));
     for (const id of ["paypalAmount", "achAmount"]) $(id).addEventListener("input", updatePayment);
     $("cur").addEventListener("change", updatePayment);
     $("addCustom").addEventListener("click", () => custom.add());
     $("clearForm").addEventListener("click", resetForm);
+    $("cancelEdit").addEventListener("click", () => { resetForm(); showTab("list"); });
 
     $("tab-create").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -297,8 +350,9 @@
       const missing = (mode !== "ach" && !amounts.paypal) ? "PayPal" : (mode !== "paypal" && !amounts.ach) ? "ACH" : "";
       if (missing) { $("createError").textContent = `Enter the ${missing} amount.`; return; }
 
+      const label = $("generate").textContent;
       $("generate").disabled = true;
-      $("generate").textContent = "Generating…";
+      $("generate").textContent = editingId ? "Saving…" : "Generating…";
       try {
         const invoice = {
           inv: $("inv").value.trim(),
@@ -314,17 +368,22 @@
           custom: custom.read(),
           notes: $("notes").value.trim(),
         };
-        const { id } = await adminApi("create", { invoice });
+        const { id } = editingId
+          ? await adminApi("update", { id: editingId, invoice })
+          : await adminApi("create", { invoice });
         const link = invoiceLink(id);
+        $("resultMsg").textContent = editingId ? "Saved. The link is unchanged." : "Invoice created.";
         $("link").value = link;
         $("openLink").href = link;
         $("result").hidden = false;
         $("link").select();
+        setEditing(null);
       } catch (err) {
         $("createError").textContent = err.message;
+        $("generate").textContent = label;
       } finally {
         $("generate").disabled = false;
-        $("generate").textContent = "Generate Link";
+        if (!editingId) $("generate").textContent = "Generate Link";
       }
     });
 
@@ -385,6 +444,7 @@
 
         const week = [inv.weekStart, inv.weekEnd].filter(Boolean).map(formatDate).join(" – ");
         const actions = el("div", { class: "actions" },
+          !anyPaid && action("Edit", async () => editInvoice(r), { cls: "primary" }),
           live && action("Copy link", async (b) => { await copyText(link); flashCopied(b); }),
           live && el("a", { class: "copy-btn", href: link, target: "_blank", rel: "noopener" }, "Open"),
           anyPaid && action("Reset payments", run("reset", r.id), { ask: "Mark this invoice as unpaid again?" }),
@@ -419,33 +479,37 @@
     // ---------- Settings ----------
     const methodEditors = {};
 
-    function buildMethodBox(key, m) {
+    function buildMethodBox(key, fields) {
       const box = $(`${key}Box`);
-      const link = el("input", { placeholder: "Button link (optional)", "data-f": "link" });
-      link.value = m.link || "";
       const fieldsBox = el("div", { class: "fields" });
-      const fields = rowEditor(fieldsBox, [{ placeholder: "Label, e.g. Account number" }, { placeholder: "Value", width: "2fr" }]);
-      m.fields.forEach((f) => fields.add(f));
+      const editor = rowEditor(fieldsBox, [{ placeholder: "Label" }, { placeholder: "Value", width: "2fr" }]);
+      const required = REQUIRED_FIELDS[key];
+      const valueOf = (label) => (fields.find(([l]) => l === label) || [])[1] || "";
+      required.forEach((label) => editor.add([label, valueOf(label)], { locked: true }));
+      fields.filter(([l]) => !required.includes(l)).forEach((f) => editor.add(f));
+      methodEditors[key] = editor;
+
       const addField = el("button", { type: "button", class: "btn secondary small-btn" }, "+ Add field");
-      addField.addEventListener("click", () => fields.add());
-      methodEditors[key] = { link, fields };
+      addField.addEventListener("click", () => editor.add());
       box.replaceChildren(
         el("label", {}, "Fields shown to the client (each gets a Copy button)"),
         fieldsBox,
         el("div", { class: "btn-row tight" }, addField),
-        el("label", { class: "mt-s" }, "Pay button link"),
-        link,
       );
     }
 
+    document.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", () => {
+      const key = b.dataset.reset;
+      const kept = methodEditors[key].read().filter(([l]) => REQUIRED_FIELDS[key].includes(l));
+      buildMethodBox(key, kept);
+    }));
+
     function readSettings() {
-      const method = (key) => ({ link: methodEditors[key].link.value.trim(), fields: methodEditors[key].fields.read() });
       return {
         business: { name: $("bizName").value.trim(), email: $("bizEmail").value.trim(), address: $("bizAddress").value.trim() },
         notifyEmail: $("notifyEmail").value.trim(),
-        ntfyTopic: $("ntfyTopic").value.trim(),
-        paypal: method("paypal"),
-        ach: method("ach"),
+        paypal: { fields: methodEditors.paypal.read() },
+        ach: { fields: methodEditors.ach.read() },
       };
     }
 
@@ -454,9 +518,8 @@
       $("bizEmail").value = s.business.email;
       $("bizAddress").value = s.business.address;
       $("notifyEmail").value = s.notifyEmail;
-      $("ntfyTopic").value = s.ntfyTopic;
-      buildMethodBox("paypal", s.paypal);
-      buildMethodBox("ach", s.ach);
+      buildMethodBox("paypal", s.paypal.fields);
+      buildMethodBox("ach", s.ach.fields);
     }
 
     async function loadSettings() {
@@ -467,16 +530,14 @@
     $("tab-settings").addEventListener("submit", async (e) => {
       e.preventDefault();
       const status = $("settingsStatus");
-      const draft = readSettings();
-      const bad = ["paypal", "ach"].find((k) => draft[k].link && !/^https:\/\//i.test(draft[k].link));
-      if (bad) {
-        status.textContent = `The ${METHOD_NAMES[bad]} button link must start with https://`;
-        status.className = "small error";
+      if (!$("bizName").value.trim()) {
+        status.textContent = "Enter your name."; status.className = "small error";
+        $("bizName").focus();
         return;
       }
       status.textContent = "Saving…"; status.className = "small muted";
       try {
-        fillSettings((await adminApi("saveSettings", { settings: draft })).settings);
+        fillSettings((await adminApi("saveSettings", { settings: readSettings() })).settings);
         status.textContent = "Saved."; status.className = "small success";
       } catch (err) {
         status.textContent = err.message; status.className = "small error";
