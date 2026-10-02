@@ -43,7 +43,7 @@
 
         <h2 class="section-title">Invoice details</h2>
         <div class="grid">
-          <div><label for="inv">Invoice number <span class="req">*</span></label><input id="inv" placeholder="INV-001" required /></div>
+          <div><label for="inv">Invoice number <span class="req">*</span> <span class="opt">auto: INV-[month][week]-[day]</span></label><input id="inv" placeholder="INV-0901-05" required /></div>
           <div>
             <label for="cur">Currency</label>
             <select id="cur">
@@ -196,6 +196,7 @@
     let adminKey = localStorage.getItem("invoiceAdminKey") || "";
     let editingId = null;
     let dueTouched = false;
+    let invTouched = false;
 
     const adminApi = (action, payload = {}) => api(action, { key: adminKey, ...payload });
 
@@ -300,6 +301,22 @@
       return [start, addDays(start, 6)];
     }
 
+    // INV-[month][week of month]-[day of invoice date], e.g. Sep week 1 invoiced on Sep 5 -> INV-0901-05.
+    // A Monday-Sunday week belongs to the month that holds its Thursday (most of its days).
+    function autoInvoiceNumber(weekStart, date) {
+      if (!weekStart || !date) return "";
+      const start = new Date(weekStart + "T00:00:00");
+      const thursday = new Date(start);
+      thursday.setDate(start.getDate() + ((4 - start.getDay() + 7) % 7));
+      const month = String(thursday.getMonth() + 1).padStart(2, "0");
+      const week = String(Math.ceil(thursday.getDate() / 7)).padStart(2, "0");
+      return `INV-${month}${week}-${date.slice(8, 10)}`;
+    }
+
+    function updateInvoiceNumber() {
+      if (!invTouched) $("inv").value = autoInvoiceNumber($("weekStart").value, $("date").value);
+    }
+
     function setEditing(id, label) {
       editingId = id;
       $("editBanner").hidden = !id;
@@ -317,6 +334,8 @@
       $("date").value = isoDate(new Date());
       $("due").value = addDays($("date").value, 1);
       dueTouched = false;
+      invTouched = false;
+      updateInvoiceNumber();
       $("result").hidden = true;
       $("createError").textContent = "";
       setEditing(null);
@@ -332,6 +351,7 @@
       (inv.payments || []).forEach((p) => (amounts[p.method] = p.amount));
       setPayment(amounts);
       dueTouched = true;
+      invTouched = true;
     }
 
     function editInvoice(r) {
@@ -346,15 +366,19 @@
     function nextWeekFrom(inv) {
       resetForm();
       fillForm({ ...inv, work: "", date: "", due: "" });
-      $("inv").value = (inv.inv || "").replace(/(\d+)(?!.*\d)/, (n) => String(Number(n) + 1).padStart(n.length, "0"));
       $("date").value = isoDate(new Date());
       $("due").value = addDays($("date").value, 1);
       dueTouched = false;
       if (inv.weekStart) $("weekStart").value = addDays(inv.weekStart, 7);
       if (inv.weekEnd) $("weekEnd").value = addDays(inv.weekEnd, 7);
+      invTouched = false;
+      updateInvoiceNumber();
     }
 
     $("date").addEventListener("change", () => { if (!dueTouched && $("date").value) $("due").value = addDays($("date").value, 1); });
+    for (const id of ["date", "weekStart"]) $(id).addEventListener("change", updateInvoiceNumber);
+    // Typing a number turns the automatic one off; clearing the box turns it back on.
+    $("inv").addEventListener("input", () => { invTouched = $("inv").value.trim() !== ""; if (!invTouched) updateInvoiceNumber(); });
     $("due").addEventListener("input", () => (dueTouched = true));
     document.querySelectorAll('input[name="payMode"]').forEach((r) => r.addEventListener("change", updatePayment));
     for (const id of ["paypalAmount", "achAmount"]) $(id).addEventListener("input", updatePayment);

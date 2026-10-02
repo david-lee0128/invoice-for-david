@@ -47,7 +47,7 @@ Links are random 24-character IDs, so they contain no invoice data. Your payment
 
 ## Weekly use
 
-1. **New invoice:** invoice number, client, week dates, what you did, payment type and amount(s). Click **Generate Link** and send the link to the client.
+1. **New invoice:** client, week dates, what you did, payment type and amount(s). The invoice number fills in automatically as `INV-[month][week of month]-[day]`, e.g. `INV-0901-05` for September week 1 invoiced on Sep 5; type over it to use your own. Click **Generate Link** and send the link to the client.
 2. The client pays and clicks **I've sent this … payment**. With a split invoice they confirm each transfer separately, and you get an email for each one.
 3. **Invoices** tab: check status (Unpaid, Partly paid, Paid, Link disabled), and use **Next week** to start the following invoice.
 
