@@ -2,8 +2,9 @@
 // Setup steps are in README.md. Paste this whole file into Extensions > Apps Script.
 
 const SHEET_NAME = "Invoices";
-const HEADERS = ["id", "created", "status", "paidAt", "paidInfo", "data"];
-const COL = { id: 1, created: 2, status: 3, paidAt: 4, paidInfo: 5, data: 6 };
+// status is the payment state (open / partial / paid); archived and disabled are separate flags.
+const HEADERS = ["id", "created", "status", "paidAt", "paidInfo", "data", "archivedAt", "disabled"];
+const COL = { id: 1, created: 2, status: 3, paidAt: 4, paidInfo: 5, data: 6, archivedAt: 7, disabled: 8 };
 const METHODS = { paypal: "PayPal", ach: "ACH bank transfer (US)" };
 // Fields every method always has. Labels are fixed; extra fields can be added after them.
 const REQUIRED_FIELDS = {
@@ -65,6 +66,7 @@ const ADMIN_ACTIONS = {
   reset: (b) => setStatus_(b.id, "reset"),
   disable: (b) => setStatus_(b.id, "disable"),
   enable: (b) => setStatus_(b.id, "enable"),
+  archive: (b) => setStatus_(b.id, "archive"),
   rotate: rotateId_,
   remove: removeInvoice_,
   getSettings: () => ({ ok: true, settings: settings_() }),
@@ -87,7 +89,7 @@ function getInvoice_(b) {
   const row = findRow_(b.id);
   if (!row) return { ok: false, error: "not_found" };
   const rec = readRow_(row);
-  if (rec.status === "disabled") return { ok: true, status: "disabled" };
+  if (rec.disabled) return { ok: true, status: "disabled" };
   const s = settings_();
   const paidInfo = rec.paidInfo || {};
   return {
@@ -115,7 +117,7 @@ function markPaid_(b) {
     const row = findRow_(b.id);
     if (!row) return { ok: false, error: "not_found" };
     const rec = readRow_(row);
-    if (rec.status === "disabled") return { ok: false, error: "This invoice link is no longer active." };
+    if (rec.disabled) return { ok: false, error: "This invoice link is no longer active." };
     const part = (rec.invoice.payments || []).find((p) => p.method === b.method);
     if (!part) return { ok: false, error: "That payment method isn't on this invoice." };
 
@@ -193,7 +195,8 @@ function updateInvoice_(b) {
     const row = findRow_(b.id);
     if (!row) return { ok: false, error: "not_found" };
     const rec = readRow_(row);
-    if (Object.keys(rec.paidInfo || {}).length) return { ok: false, error: "This invoice already has a confirmed payment and can't be edited." };
+    if (rec.archivedAt) return { ok: false, error: ARCHIVED_ERROR };
+    if (anyPaid_(rec)) return { ok: false, error: "This invoice already has a confirmed payment and can't be edited." };
     sheet_().getRange(row, COL.data).setValue(JSON.stringify(invoice));
     return { ok: true, id: b.id };
   });
@@ -221,18 +224,31 @@ function listInvoices_() {
   return { ok: true, invoices: rows.map(rowToRecord_).reverse() };
 }
 
+const ARCHIVED_ERROR = "Archived invoices can't be changed.";
+
+function anyPaid_(rec) {
+  return Object.keys(rec.paidInfo || {}).length > 0;
+}
+
 function setStatus_(id, op) {
   return withLock_(() => {
     const row = findRow_(id);
     if (!row) return { ok: false, error: "not_found" };
     const rec = readRow_(row);
-    const range = sheet_().getRange(row, COL.status, 1, 3);
+    if (rec.archivedAt) return { ok: false, error: ARCHIVED_ERROR };
+    const sh = sheet_();
+    // Move a legacy "disabled" status into the separate column before changing anything.
+    sh.getRange(row, COL.status).setValue(rec.status);
+    sh.getRange(row, COL.disabled).setValue(rec.disabled ? "1" : "");
     if (op === "reset") {
-      range.setValues([[rec.status === "disabled" ? "disabled" : "open", "", ""]]);
+      sh.getRange(row, COL.status, 1, 3).setValues([["open", "", ""]]);
     } else if (op === "disable") {
-      range.setValues([["disabled", rec.paidAt, JSON.stringify(rec.paidInfo || {})]]);
+      sh.getRange(row, COL.disabled).setValue("1");
     } else if (op === "enable") {
-      range.setValues([[statusFor_(rec.invoice, rec.paidInfo), rec.paidAt, JSON.stringify(rec.paidInfo || {})]]);
+      sh.getRange(row, COL.disabled).setValue("");
+    } else if (op === "archive") {
+      if (rec.status !== "paid") return { ok: false, error: "Only fully paid invoices can be archived." };
+      sh.getRange(row, COL.archivedAt).setValue(new Date().toISOString());
     }
     return { ok: true };
   });
@@ -243,16 +259,20 @@ function rotateId_(b) {
   return withLock_(() => {
     const row = findRow_(b.id);
     if (!row) return { ok: false, error: "not_found" };
+    if (readRow_(row).archivedAt) return { ok: false, error: ARCHIVED_ERROR };
     const id = randomId_(24);
     sheet_().getRange(row, COL.id).setValue(id);
     return { ok: true, id: id };
   });
 }
 
+// Invoices with a confirmed payment are kept as a record.
 function removeInvoice_(b) {
   return withLock_(() => {
     const row = findRow_(b.id);
     if (!row) return { ok: false, error: "not_found" };
+    const rec = readRow_(row);
+    if (rec.archivedAt || anyPaid_(rec)) return { ok: false, error: "Paid or archived invoices can't be deleted." };
     sheet_().deleteRow(row);
     return { ok: true };
   });
@@ -278,16 +298,24 @@ function spreadsheet_() {
   return ss;
 }
 
+let sheetCache_ = null;
+
 function sheet_() {
+  if (sheetCache_) return sheetCache_;
   const ss = spreadsheet_();
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(SHEET_NAME);
-    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-    // Plain text so Sheets doesn't turn IDs or ISO timestamps into numbers or dates.
-    sh.getRange(1, 1, sh.getMaxRows(), HEADERS.length).setNumberFormat("@");
     sh.setFrozenRows(1);
   }
+  // Writes the header row (and adds columns introduced by later versions to older sheets).
+  const header = sh.getRange(1, 1, 1, HEADERS.length);
+  if (String(header.getValues()[0][HEADERS.length - 1]) !== HEADERS[HEADERS.length - 1]) {
+    header.setValues([HEADERS]);
+    // Plain text so Sheets doesn't turn IDs or ISO timestamps into numbers or dates.
+    sh.getRange(1, 1, sh.getMaxRows(), HEADERS.length).setNumberFormat("@");
+  }
+  sheetCache_ = sh;
   return sh;
 }
 
@@ -308,13 +336,19 @@ function readRow_(row) {
 }
 
 function rowToRecord_(r) {
+  const invoice = parseJson_(r[5], {});
+  const paidInfo = parseJson_(r[4], {});
+  // Older versions stored "disabled" in the status column instead of the payment state.
+  const legacyDisabled = String(r[2]) === "disabled";
   return {
     id: String(r[0]),
     created: String(r[1]),
-    status: String(r[2]),
+    status: legacyDisabled ? statusFor_(invoice, paidInfo) : String(r[2]),
     paidAt: String(r[3]),
-    paidInfo: parseJson_(r[4], {}),
-    invoice: parseJson_(r[5], {}),
+    paidInfo: paidInfo,
+    invoice: invoice,
+    archivedAt: String(r[6] || ""),
+    disabled: legacyDisabled || String(r[7] || "") === "1",
   };
 }
 

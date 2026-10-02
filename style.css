@@ -89,6 +89,12 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .pill.partial { background: #e4e8f4; color: #2c3a6b; }
 .pill.paid { background: #dff0e4; color: #155a32; }
 .pill.disabled { background: #ebebe7; color: var(--muted); }
+.pill.archived { background: #e7e5f2; color: #4b3f8a; }
+.pills { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.waiting { color: #c27a0e; font-weight: 600; }
+.archived-group { margin-top: 28px; border-top: 1px solid var(--divider); padding-top: 18px; }
+.archived-group summary { cursor: pointer; font-weight: 700; font-size: 0.95rem; }
+.archived-group[open] summary { margin-bottom: 4px; }
 
 .toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .print-only { display: none; }

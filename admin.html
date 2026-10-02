@@ -393,7 +393,8 @@
     });
 
     // ---------- Invoice list ----------
-    const STATUS_LABEL = { open: "Unpaid", partial: "Partly paid", paid: "Paid", disabled: "Link disabled" };
+    const STATUS_LABEL = { open: "Unpaid", partial: "Partly paid", paid: "Paid" };
+    let archivedOpen = false;
 
     async function loadList() {
       $("listError").textContent = "";
@@ -425,53 +426,76 @@
       };
       const run = (op, id) => async () => { await adminApi(op, { id }); await loadList(); };
 
-      const rows = invoices.map((r) => {
+      const row = (r) => {
         const inv = r.invoice || {};
         const cur = inv.cur || "USD";
         const link = invoiceLink(r.id);
         const paidInfo = r.paidInfo || {};
-        const live = r.status !== "disabled";
+        const archived = !!r.archivedAt;
+        const live = !r.disabled;
         const anyPaid = Object.keys(paidInfo).length > 0;
+        const paid = r.status === "paid";
 
         const parts = (inv.payments || []).map((p) => {
-          const paid = paidInfo[p.method];
+          const sent = paidInfo[p.method];
           return el("div", { class: "small" },
             `${METHOD_NAMES[p.method]} ${formatMoney(p.amount, cur)} `,
-            paid
-              ? el("span", { class: "success" }, `✓ ${new Date(paid.at).toLocaleDateString()}${paid.reference ? ` · ${paid.reference}` : ""}`)
-              : el("span", { class: "muted" }, "· waiting"));
+            sent
+              ? el("span", { class: "success" }, `✓ ${new Date(sent.at).toLocaleDateString()}${sent.reference ? ` · ${sent.reference}` : ""}`)
+              : el("span", { class: "waiting" }, "· waiting"));
         });
 
-        const week = [inv.weekStart, inv.weekEnd].filter(Boolean).map(formatDate).join(" – ");
-        const actions = el("div", { class: "actions" },
-          !anyPaid && action("Edit", async () => editInvoice(r)),
-          live && action("Copy link", async (b) => { await copyText(link); flashCopied(b); }),
-          live && el("a", { class: "copy-btn", href: link, target: "_blank", rel: "noopener" }, "Open"),
-          anyPaid && action("Reset payments", run("reset", r.id), { ask: "Mark this invoice as unpaid again?" }),
-          live
-            ? action("Disable link", run("disable", r.id))
-            : action("Enable link", run("enable", r.id)),
-          action("New link", run("rotate", r.id), { ask: "Create a new link for this invoice? The current link will stop working." }),
-          action("Next week", async () => { nextWeekFrom(inv); showTab("create"); }),
-          action("Delete", run("remove", r.id), { cls: "danger", ask: `Delete invoice ${inv.inv || ""}? This can't be undone.` }),
-        );
+        const nextWeek = action("Next week", async () => { nextWeekFrom(inv); showTab("create"); });
+        // Archived invoices are read-only apart from starting next week's invoice.
+        const actions = archived
+          ? el("div", { class: "actions" }, nextWeek)
+          : el("div", { class: "actions" },
+              !anyPaid && action("Edit", async () => editInvoice(r)),
+              live && action("Copy link", async (b) => { await copyText(link); flashCopied(b); }),
+              live && el("a", { class: "copy-btn", href: link, target: "_blank", rel: "noopener" }, "Open"),
+              anyPaid && action("Reset payments", run("reset", r.id), { ask: "Mark this invoice as unpaid again?" }),
+              live
+                ? action("Disable link", run("disable", r.id))
+                : action("Enable link", run("enable", r.id)),
+              action("New link", run("rotate", r.id), { ask: "Create a new link for this invoice? The current link will stop working." }),
+              paid && nextWeek,
+              paid && action("Archive", run("archive", r.id), { ask: `Archive invoice ${inv.inv || ""}? Archived invoices can't be edited or changed.` }),
+              !anyPaid && action("Delete", run("remove", r.id), { cls: "danger", ask: `Delete invoice ${inv.inv || ""}? This can't be undone.` }),
+            );
 
+        const week = [inv.weekStart, inv.weekEnd].filter(Boolean).map(formatDate).join(" – ");
         return el("tr", {},
           el("td", {}, el("strong", {}, inv.inv || "—"), el("div", { class: "muted small" }, week)),
           el("td", {}, inv.client || "—"),
           el("td", {}, el("div", { class: "num-left" }, formatMoney(inv.total || 0, cur)), ...parts),
-          el("td", {}, el("span", { class: `pill ${r.status}` }, STATUS_LABEL[r.status] || r.status)),
+          el("td", {}, el("div", { class: "pills" },
+            el("span", { class: `pill ${r.status}` }, STATUS_LABEL[r.status] || r.status),
+            r.disabled && el("span", { class: "pill disabled" }, "Link disabled"),
+            archived && el("span", { class: "pill archived" }, `Archived ${new Date(r.archivedAt).toLocaleDateString()}`),
+          )),
           el("td", {}, actions),
         );
-      });
+      };
 
-      $("list").replaceChildren(el("div", { class: "table-scroll" }, el("table", {},
+      const table = (list) => el("div", { class: "table-scroll" }, el("table", {},
         el("thead", {}, el("tr", {},
           el("th", {}, "Invoice"), el("th", {}, "Client"), el("th", {}, "Amount"),
           el("th", {}, "Status"), el("th", {}, "Actions"),
         )),
-        el("tbody", {}, ...rows),
-      )));
+        el("tbody", {}, ...list.map(row)),
+      ));
+
+      const active = invoices.filter((r) => !r.archivedAt);
+      const archived = invoices.filter((r) => r.archivedAt);
+      $("list").replaceChildren(
+        active.length ? table(active) : el("p", { class: "muted" }, "No active invoices."),
+        el("details", { class: "archived-group", id: "archivedGroup" },
+          el("summary", {}, `Archived (${archived.length})`),
+          archived.length ? table(archived) : el("p", { class: "muted small" }, "Paid invoices you archive appear here."),
+        ),
+      );
+      $("archivedGroup").open = archivedOpen;
+      $("archivedGroup").addEventListener("toggle", (e) => (archivedOpen = e.target.open));
     }
 
     $("refresh").addEventListener("click", loadList);
