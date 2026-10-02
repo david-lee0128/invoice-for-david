@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
   <title>Invoice Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -32,6 +35,9 @@
       <!-- New invoice -->
       <form class="card" id="tab-create" autocomplete="off">
         <h1>New weekly invoice</h1>
+        <p class="hint">Fields marked with <span class="req">*</span> are required.</p>
+
+        <h2 class="section-title">Invoice details</h2>
         <div class="grid">
           <div><label for="inv">Invoice number</label><input id="inv" placeholder="INV-001" /></div>
           <div>
@@ -41,37 +47,48 @@
               <option>AUD</option><option>JPY</option><option>KRW</option><option>SGD</option>
             </select>
           </div>
-          <div><label for="client">Client name</label><input id="client" placeholder="Acme Corp" /></div>
-          <div><label for="client_email">Client email (optional)</label><input id="client_email" type="email" placeholder="billing@acme.com" /></div>
+          <div><label for="client">Client name</label><input id="client" placeholder="Who is this invoice for?" /></div>
+          <div><label for="client_email">Client email <span class="opt">optional</span></label><input id="client_email" type="email" placeholder="billing@company.com" /></div>
+          <div><label for="date">Invoice date</label><input id="date" type="date" /></div>
+          <div><label for="due">Due date <span class="opt">optional</span></label><input id="due" type="date" /></div>
+        </div>
+
+        <hr />
+        <h2 class="section-title">This week's work</h2>
+        <div class="grid">
           <div><label for="weekStart">Week from</label><input id="weekStart" type="date" /></div>
           <div><label for="weekEnd">Week to</label><input id="weekEnd" type="date" /></div>
-          <div><label for="date">Invoice date</label><input id="date" type="date" /></div>
-          <div><label for="due">Due date (optional)</label><input id="due" type="date" /></div>
-
           <div class="full">
-            <label for="work">Work completed this week</label>
-            <textarea id="work" rows="6" placeholder="- Built the checkout page&#10;- Fixed login bug&#10;- Weekly sync with the team"></textarea>
+            <label for="work">Work completed</label>
+            <textarea id="work" rows="6" placeholder="Tell the client what was done this week."></textarea>
           </div>
+        </div>
 
+        <hr />
+        <h2 class="section-title">Payment</h2>
+        <div class="grid">
           <div class="full">
-            <label>Payment</label>
+            <label>Payment method <span class="req">*</span></label>
             <div class="choice" id="payMode">
               <label><input type="radio" name="payMode" value="paypal" checked /> PayPal only</label>
               <label><input type="radio" name="payMode" value="ach" /> ACH (Payoneer) only</label>
               <label><input type="radio" name="payMode" value="both" /> Split: PayPal + ACH</label>
             </div>
           </div>
-          <div id="paypalAmountBox"><label for="paypalAmount">PayPal amount</label><input id="paypalAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
-          <div id="achAmountBox"><label for="achAmount">ACH amount</label><input id="achAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
-          <div class="full total-line">Total: <strong id="calc"></strong></div>
+          <div id="paypalAmountBox"><label for="paypalAmount">PayPal amount <span class="req">*</span></label><input id="paypalAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
+          <div id="achAmountBox"><label for="achAmount">ACH amount <span class="req">*</span></label><input id="achAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
+          <div class="full total-line">Total <strong id="calc"></strong></div>
+        </div>
 
+        <hr />
+        <h2 class="section-title">Extras</h2>
+        <div class="grid">
           <div class="full">
-            <label>Custom fields <span class="muted">(optional – shown next to the invoice number, e.g. "Contract", "PO number")</span></label>
+            <label>Custom fields <span class="opt">optional – shown next to the invoice number, e.g. "Contract", "PO number"</span></label>
             <div id="custom"></div>
             <button type="button" class="btn secondary small-btn" id="addCustom">+ Add field</button>
           </div>
-
-          <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" placeholder="Thank you!"></textarea></div>
+          <div class="full"><label for="notes">Notes <span class="opt">optional</span></label><textarea id="notes" placeholder="Anything else the client should know."></textarea></div>
         </div>
 
         <div class="btn-row">
@@ -102,30 +119,32 @@
       <!-- Settings -->
       <form class="card" id="tab-settings" hidden autocomplete="off">
         <h1>Payment settings</h1>
-        <p class="muted small">Stored in your private backend. Clients only see the method(s) you put on their invoice.</p>
+        <p class="hint">Stored in your private backend. Clients only see the method(s) you put on their invoice.</p>
 
-        <h2>Your business</h2>
+        <h2 class="section-title">Your business</h2>
         <div class="grid">
           <div><label for="bizName">Name</label><input id="bizName" /></div>
           <div><label for="bizEmail">Email</label><input id="bizEmail" type="email" /></div>
-          <div class="full"><label for="bizAddress">Address (optional)</label><textarea id="bizAddress"></textarea></div>
+          <div class="full"><label for="bizAddress">Address <span class="opt">optional</span></label><textarea id="bizAddress"></textarea></div>
         </div>
 
-        <h2 class="mt">Notifications</h2>
+        <hr />
+        <h2 class="section-title">Notifications</h2>
         <div class="grid">
           <div>
             <label for="notifyEmail">Email me at</label>
             <input id="notifyEmail" type="email" placeholder="Defaults to your Google account" />
           </div>
           <div>
-            <label for="ntfyTopic">ntfy.sh topic (optional phone push)</label>
+            <label for="ntfyTopic">ntfy.sh topic <span class="opt">optional phone push</span></label>
             <input id="ntfyTopic" placeholder="e.g. invoices-k38fj2x9" />
           </div>
         </div>
 
-        <h2 class="mt">PayPal</h2>
+        <hr />
+        <h2 class="section-title">PayPal</h2>
         <div class="method-box" id="paypalBox"></div>
-        <h2 class="mt">ACH bank transfer (Payoneer receiving account)</h2>
+        <h2 class="section-title mt">ACH bank transfer <span class="opt">Payoneer receiving account</span></h2>
         <div class="method-box" id="achBox"></div>
         <p class="muted small">Amount and payment reference are added automatically. The optional button link must start with https:// and can use
           <code>{amount}</code>, <code>{currency}</code> and <code>{invoice}</code>, e.g. <code>https://paypal.me/yourname/{amount}{currency}</code>.</p>
