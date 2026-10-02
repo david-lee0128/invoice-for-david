@@ -1,59 +1,58 @@
-# Static Invoice and Payment Page
+# Weekly Invoice and Payment Page
 
-A lightweight, serverless invoice payment page designed for free hosting on GitHub Pages. It displays payment details (PayPal, ACH bank via a Payoneer receiving account) with one-click copy functionality and supports dynamic invoice generation using URL parameters.
+A lightweight invoice page for weekly billing, hosted for free on GitHub Pages, with a free Google Apps Script backend.
 
-## Features
+- **Admin page** (`admin.html`, protected by a secret key): write up the week's work, choose **PayPal only**, **ACH (Payoneer receiving account) only**, or **split across both**, and generate a link.
+- **Invoice page** (`index.html#<id>`): the client sees the work summary and only the payment method(s) on that invoice, with one-click copy buttons. They confirm each payment with an **"I've sent this payment"** button.
+- **Notifications:** you get an email (and optionally a phone push via [ntfy](https://ntfy.sh)) every time the client confirms a payment.
+- **Link control:** reset payments to unpaid, disable or re-enable a link, issue a new link (the old one stops working), or delete the invoice.
+- **Download PDF:** the client can save a clean PDF that contains only the invoice: work, amounts and payment details, with no buttons and no browser header or footer.
+- **Next week:** copy an invoice forward one week, with the invoice number incremented.
 
-- **Dynamic invoicing** – customize client name, invoice number, line items, and total amount through URL parameters.
-- **One-click copy** – copy buttons on every payment field so clients can transfer without retyping.
-- **URL generator included** – `admin.html` builds formatted invoice links visually.
-- **Free hosting** – plain HTML/CSS/JS, no build step, works on GitHub Pages.
-- **Print / Save as PDF** – print-friendly layout.
+Links are random 24-character IDs, so they contain no invoice data. Your payment details are stored in the backend, not in this public repository.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | The invoice + payment page clients see |
-| `admin.html` | Link generator |
-| `config.js` | **Your** business and payment details (edit this) |
-| `invoice.js` | Shared helpers |
-| `style.css` | Styles |
+| `index.html` | Invoice page the client sees |
+| `admin.html` | Create and manage invoices, edit payment details |
+| `backend/Code.gs` | Google Apps Script backend (paste into Apps Script) |
+| `config.js` | The backend URL |
+| `invoice.js`, `style.css` | Shared helpers and styles |
 
 ## Setup
 
-1. Edit `config.js` with your real PayPal email and the US ACH details from your Payoneer receiving account (Payoneer → Receive → Receiving accounts). Set `enabled: false` on any method you don't want to show.
-2. Push to GitHub, then go to **Settings → Pages**, choose **Deploy from a branch**, select `main` / root, and save.
-3. Your site will be at `https://<username>.github.io/<repo>/`.
+### 1. Backend (Google Apps Script, about 5 minutes)
 
-> Payment details are read only from `config.js`, never from the URL, so nobody can craft a link on your domain that shows a different account.
+1. Create a new Google Sheet, e.g. "Invoices". It stores your invoices.
+2. In the sheet, open **Extensions → Apps Script**. Delete the sample code, paste in all of `backend/Code.gs`, and save.
+3. Pick **`setup`** in the function dropdown and click **Run**. Approve the permissions; Google will warn that the app isn't verified, because you wrote it yourself, so choose **Advanced → Go to project**.
+4. Open **Execution log** and copy the **Admin key**. You'll use it to sign in to `admin.html`. Keep it private.
+5. Click **Deploy → New deployment → Web app**:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+6. Click **Deploy** and copy the **Web app URL** (ends in `/exec`).
 
-## Generator page
+> If you change `Code.gs` later, use **Deploy → Manage deployments → Edit → New version**. That keeps the same URL.
 
-Open `admin.html` to build shareable links without typing URL parameters manually. Fill in the form fields and click **Generate Link** to get a ready-to-send invoice URL.
+### 2. Frontend
 
-## URL parameters
+1. Paste the Web app URL into `config.js`:
+   ```js
+   window.INVOICE_CONFIG = { apiUrl: "https://script.google.com/macros/s/XXXX/exec" };
+   ```
+2. Commit and push, then enable **Settings → Pages → Deploy from a branch → `main` / root**.
+3. Open `https://<username>.github.io/<repo>/admin.html`, sign in with the admin key, and fill in **Payment settings**: your name, PayPal email, and the US ACH details from Payoneer (**Receive → Receiving accounts**).
 
-| Param | Example | Notes |
-| --- | --- | --- |
-| `inv` | `INV-001` | Invoice number; also used as the payment reference |
-| `client` | `Acme Corp` | Bill-to name |
-| `client_email` | `billing@acme.com` | Optional |
-| `date` | `2026-10-01` | Invoice date (YYYY-MM-DD) |
-| `due` | `2026-10-15` | Due date (YYYY-MM-DD) |
-| `cur` | `USD` | ISO currency code; defaults to `config.js` |
-| `items` | `[["Design",1,500],["Hosting",12,10]]` | JSON array of `[description, qty, unit price]` (URL-encoded) |
-| `total` | `620` | Optional; overrides the total calculated from items |
-| `notes` | `Thanks!` | Optional note shown on the invoice |
+## Weekly use
 
-Example:
+1. **New invoice:** invoice number, client, week dates, what you did, payment type and amount(s). Click **Generate Link** and send the link to the client.
+2. The client pays and clicks **I've sent this … payment**. With a split invoice they confirm each transfer separately, and you get an email for each one.
+3. **Invoices** tab: check status (Unpaid, Partly paid, Paid, Link disabled), and use **Next week** to start the following invoice.
 
-```
-index.html?inv=INV-001&client=Acme%20Corp&due=2026-10-15&items=%5B%5B%22Design%22%2C1%2C500%5D%5D
-```
+Client confirmations are only what the client reports. Always check PayPal or Payoneer to make sure the money has actually arrived.
 
-## Privacy note
+## Phone push notifications (optional)
 
-GitHub Pages sites are public, and `config.js` (including your account numbers) is visible to anyone who opens the site or the repository. The page sets `noindex`, but that only keeps it out of search engines. Only share details here that you would normally put on an invoice. You can keep the repository private and still publish Pages on paid GitHub plans.
-
-Run locally by opening `index.html` directly, or with `python -m http.server`.
+Install the ntfy app, subscribe to a hard-to-guess topic name (e.g. `invoices-k38fj2x9`), and put the same name in **Payment settings → ntfy.sh topic**. Anyone who knows the topic name can read the notifications, so make it unguessable.

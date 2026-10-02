@@ -8,95 +8,157 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="wrap">
-    <section class="card" id="invoice"></section>
-    <section class="card" id="payment"></section>
-    <div class="no-print btn-row" style="justify-content:center">
-      <button class="btn secondary" onclick="window.print()">Print / Save as PDF</button>
-    </div>
+  <main class="wrap" id="app">
+    <section class="card"><p class="muted">Loading invoice…</p></section>
   </main>
 
   <script src="config.js"></script>
   <script src="invoice.js"></script>
   <script>
-    const cfg = window.INVOICE_CONFIG;
-    const p = new URLSearchParams(location.search);
+    const app = document.getElementById("app");
+    // Links look like index.html#<id>; ?id=<id> also works.
+    const id = location.hash.slice(1) || new URLSearchParams(location.search).get("id");
 
-    const currency = (p.get("cur") || cfg.defaultCurrency || "USD").toUpperCase();
-    const items = parseItems(p.get("items"));
-    const itemsTotal = items.reduce((sum, i) => sum + i.qty * i.price, 0);
-    const totalParam = p.get("total");
-    const total = totalParam !== null && totalParam !== "" && !isNaN(Number(totalParam))
-      ? Number(totalParam)
-      : itemsTotal;
-    const invoiceNo = p.get("inv") || "";
+    function message(title, text) {
+      app.replaceChildren(el("section", { class: "card center" },
+        el("h1", {}, title),
+        el("p", { class: "muted" }, text),
+      ));
+    }
 
-    document.title = invoiceNo ? `Invoice ${invoiceNo} – ${cfg.business.name}` : `Invoice – ${cfg.business.name}`;
+    async function load() {
+      if (!id) return message("Invoice not found", "This link is missing an invoice ID.");
+      let data;
+      try {
+        data = await api("get", { id });
+      } catch (err) {
+        if (err.message === "not_found") return message("Invoice not found", "This link is invalid or the invoice was removed.");
+        return message("Couldn't load invoice", err.message);
+      }
+      if (data.status === "disabled") {
+        return message("Link no longer active", "This invoice link has been deactivated. Please contact the sender for an updated link.");
+      }
+      render(data);
+    }
 
-    // ---------- Invoice ----------
-    const inv = document.getElementById("invoice");
+    function render(data) {
+      const inv = data.invoice;
+      const cur = inv.cur || "USD";
+      const payments = data.payments || [];
+      const reference = inv.inv ? `Invoice ${inv.inv}` : "";
 
-    const metaRows = [
-      ["Invoice #", invoiceNo],
-      ["Date", formatDate(p.get("date"))],
-      ["Due", formatDate(p.get("due"))],
-    ].filter(([, v]) => v);
+      // Browsers use the title as the default PDF file name.
+      document.title = [inv.inv ? `Invoice ${inv.inv}` : "Invoice", inv.client].filter(Boolean).join(" - ");
 
-    inv.append(
-      el("div", { class: "header" },
+      const toolbar = el("div", { class: "toolbar no-print" },
+        el("button", { class: "btn secondary small-btn", type: "button", onclick: () => window.print() }, "Download PDF"),
+      );
+
+      app.replaceChildren(
+        toolbar,
+        invoiceCard(data, { cur, payments, reference }),
+        ...(data.status === "paid" ? [] : [paymentSection(payments, { cur, reference })]),
+      );
+    }
+
+    // ---------- The invoice document (also exactly what the PDF contains) ----------
+    function invoiceCard(data, { cur, payments, reference }) {
+      const inv = data.invoice;
+      const biz = data.business || {};
+      const card = el("section", { class: "card doc" });
+
+      if (data.status === "paid") {
+        card.append(el("div", { class: "banner paid" },
+          el("strong", {}, "Paid"),
+          data.paidAt ? ` – payment reported on ${formatDate(data.paidAt.slice(0, 10))}` : "",
+        ));
+      }
+
+      const metaRows = [
+        ...[
+          ["Invoice #", inv.inv],
+          ["Date", formatDate(inv.date)],
+          ["Due", formatDate(inv.due)],
+        ].filter(([, v]) => v),
+        ...(inv.custom || []),
+      ];
+
+      card.append(el("div", { class: "header" },
         el("div", {},
           el("h1", {}, "Invoice"),
-          el("div", {}, el("strong", {}, cfg.business.name)),
-          cfg.business.email && el("div", { class: "muted small" }, cfg.business.email),
-          cfg.business.address && el("div", { class: "muted small" }, cfg.business.address),
+          biz.name && el("div", {}, el("strong", {}, biz.name)),
+          biz.email && el("div", { class: "muted small" }, biz.email),
+          biz.address && el("div", { class: "muted small pre" }, biz.address),
         ),
         el("div", { class: "meta" },
           ...metaRows.map(([k, v]) => el("div", { class: "meta-row" }, el("span", {}, k), el("span", {}, v))),
         ),
-      ),
-    );
+      ));
 
-    if (p.get("client")) {
-      inv.append(
-        el("div", { class: "billto" },
-          el("div", { class: "muted small" }, "Bill to"),
-          el("div", {}, el("strong", {}, p.get("client"))),
-          p.get("client_email") && el("div", { class: "muted small" }, p.get("client_email")),
-        ),
-      );
-    }
-
-    if (items.length) {
-      const tbody = el("tbody");
-      for (const i of items) {
-        tbody.append(el("tr", {},
-          el("td", {}, i.desc),
-          el("td", { class: "num" }, i.qty),
-          el("td", { class: "num" }, formatMoney(i.price, currency)),
-          el("td", { class: "num" }, formatMoney(i.qty * i.price, currency)),
+      const week = [formatDate(inv.weekStart), formatDate(inv.weekEnd)].filter(Boolean).join(" – ");
+      if (inv.client || week) {
+        card.append(el("div", { class: "billto two-col" },
+          inv.client && el("div", {},
+            el("div", { class: "muted small" }, "Bill to"),
+            el("div", {}, el("strong", {}, inv.client)),
+            inv.client_email && el("div", { class: "muted small" }, inv.client_email),
+          ),
+          week && el("div", {},
+            el("div", { class: "muted small" }, "Work period"),
+            el("div", {}, el("strong", {}, week)),
+          ),
         ));
       }
-      inv.append(el("table", {},
+
+      if (inv.work) {
+        card.append(el("div", { class: "section" },
+          el("h3", {}, "Work completed"),
+          el("div", { class: "pre" }, inv.work),
+        ));
+      }
+
+      const tbody = el("tbody");
+      for (const p of payments) {
+        tbody.append(el("tr", {},
+          el("td", {}, p.name),
+          el("td", {}, p.paidAt
+            ? el("span", { class: "pill paid" }, `Sent ${formatDate(p.paidAt.slice(0, 10))}`)
+            : el("span", { class: "pill open" }, "Due")),
+          el("td", { class: "num" }, formatMoney(p.amount, cur)),
+        ));
+      }
+      card.append(el("table", {},
         el("thead", {}, el("tr", {},
-          el("th", {}, "Description"),
-          el("th", { class: "num" }, "Qty"),
-          el("th", { class: "num" }, "Rate"),
-          el("th", { class: "num" }, "Amount"),
+          el("th", {}, "Payment"), el("th", {}, "Status"), el("th", { class: "num" }, "Amount"),
         )),
         tbody,
       ));
+      card.append(el("div", { class: "total-row" },
+        el("span", {}, data.status === "paid" ? "Total" : "Total due"),
+        el("span", {}, formatMoney(inv.total, cur)),
+      ));
+      if (payments.length > 1) {
+        card.append(el("p", { class: "muted small right" }, `Paid as ${payments.length} separate transfers, as listed above.`));
+      }
+
+      // Payment instructions for the PDF; on screen they're in the cards below with copy buttons.
+      const due = payments.filter((p) => !p.paidAt);
+      if (due.length) {
+        card.append(el("div", { class: "section print-only" },
+          el("h3", {}, "Payment details"),
+          ...due.map((p) => el("div", { class: "print-method" },
+            el("strong", {}, `${p.name} – ${formatMoney(p.amount, cur)}`),
+            ...p.fields.filter(([, v]) => v).map(([k, v]) => el("div", { class: "small" }, el("span", { class: "muted" }, `${k}: `), v)),
+          )),
+          reference && el("div", { class: "small" }, el("span", { class: "muted" }, "Payment reference: "), reference),
+        ));
+      }
+
+      if (inv.notes) card.append(el("div", { class: "notes small" }, inv.notes));
+      return card;
     }
 
-    inv.append(el("div", { class: "total-row" },
-      el("span", {}, "Total due"),
-      el("span", {}, formatMoney(total, currency)),
-    ));
-
-    if (p.get("notes")) inv.append(el("div", { class: "notes small" }, p.get("notes")));
-
-    // ---------- Payment ----------
-    const pay = document.getElementById("payment");
-
+    // ---------- How to pay (screen only) ----------
     function copyField(label, value) {
       if (!value) return null;
       const btn = el("button", { class: "copy-btn", type: "button" }, "Copy");
@@ -110,62 +172,71 @@
       );
     }
 
-    const amountPlain = total.toFixed(2);
-    const reference = invoiceNo ? `Invoice ${invoiceNo}` : "";
-
-    const methods = [];
-    if (cfg.paypal && cfg.paypal.enabled) {
-      const panel = el("div", { class: "pay-panel" },
-        copyField("PayPal email", cfg.paypal.email),
-        copyField(`Amount (${currency})`, amountPlain),
-        copyField("Note / reference", reference),
-      );
-      if (cfg.paypal.meLink && /^https:\/\//.test(cfg.paypal.meLink)) {
-        const href = `${cfg.paypal.meLink.replace(/\/+$/, "")}/${amountPlain}${currency}`;
-        panel.append(el("div", { class: "btn-row no-print" },
-          el("a", { class: "btn", href, target: "_blank", rel: "noopener" }, "Pay with PayPal"),
-        ));
+    function paymentSection(payments, { cur, reference }) {
+      const wrap = el("div", { class: "no-print" });
+      if (payments.length > 1) {
+        wrap.append(el("div", { class: "banner split" },
+          el("strong", {}, `This invoice is paid in ${payments.length} parts. `),
+          "Please send each payment below separately, then confirm each one."));
       }
-      methods.push(["PayPal", panel]);
+      payments.forEach((p, i) => wrap.append(paymentCard(p, { cur, reference, step: payments.length > 1 ? i + 1 : 0 })));
+      return wrap;
     }
-    if (cfg.ach && cfg.ach.enabled) {
-      const a = cfg.ach;
-      methods.push(["ACH Bank Transfer (US)", el("div", { class: "pay-panel" },
-        copyField("Account holder", a.accountHolder),
-        copyField("Bank name", a.bankName),
-        copyField("Routing number (ABA)", a.routingNumber),
-        copyField("Account number", a.accountNumber),
-        copyField("Account type", a.accountType),
-        copyField("Bank address", a.bankAddress),
-        copyField(`Amount (${currency})`, amountPlain),
+
+    function paymentCard(p, { cur, reference, step }) {
+      const amount = Number(p.amount).toFixed(2);
+      const title = `${step ? `${step}. ` : ""}Pay ${formatMoney(p.amount, cur)} via ${p.name}`;
+      const card = el("section", { class: "card" }, el("h2", {}, title));
+
+      if (p.paidAt) {
+        card.append(el("p", { class: "success" }, `✓ Marked as sent on ${new Date(p.paidAt).toLocaleString()}. Thank you!`));
+        return card;
+      }
+
+      card.append(
+        ...p.fields.map(([label, value]) => copyField(label, value)),
+        copyField(`Amount (${cur})`, amount),
         copyField("Payment reference", reference),
-      )]);
+      );
+      if (p.link) {
+        const href = p.link
+          .replaceAll("{amount}", amount)
+          .replaceAll("{currency}", cur)
+          .replaceAll("{invoice}", encodeURIComponent(reference));
+        card.append(el("div", { class: "btn-row" },
+          el("a", { class: "btn", href, target: "_blank", rel: "noopener" }, `Open ${p.name}`)));
+      }
+
+      const open = el("button", { class: "btn ok", type: "button" }, `I've sent this ${p.name} payment`);
+      const ref = el("input", { placeholder: p.method === "paypal" ? "PayPal transaction ID (optional)" : "Bank confirmation number (optional)" });
+      const status = el("p", { class: "small" });
+      const confirm = el("button", { class: "btn ok", type: "submit" }, "Confirm payment sent");
+      const form = el("form", { hidden: "", class: "confirm-form" },
+        el("label", {}, "Transaction reference"), ref,
+        el("div", { class: "btn-row" }, confirm),
+        status,
+      );
+      open.addEventListener("click", () => { open.hidden = true; form.hidden = false; ref.focus(); });
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        confirm.disabled = true;
+        status.textContent = "Sending…";
+        status.className = "small muted";
+        try {
+          await api("paid", { id, method: p.method, reference: ref.value.trim() });
+          await load();
+        } catch (err) {
+          confirm.disabled = false;
+          status.textContent = `Couldn't send: ${err.message} Please try again.`;
+          status.className = "small error";
+        }
+      });
+      card.append(el("div", { class: "btn-row" }, open), form);
+      return card;
     }
 
-    pay.append(el("h2", {}, "How to pay"));
-    if (!methods.length) {
-      pay.append(el("p", { class: "muted" }, "No payment methods configured."));
-    } else {
-      const tabs = el("div", { class: "method-tabs no-print" });
-      const panels = methods.map(([, panel]) => panel);
-      methods.forEach(([name, panel], idx) => {
-        const btn = el("button", { type: "button" }, name);
-        btn.addEventListener("click", () => {
-          tabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          panels.forEach((pn) => (pn.hidden = pn !== panel));
-        });
-        tabs.append(btn);
-        panel.hidden = idx !== 0;
-        if (idx === 0) btn.classList.add("active");
-      });
-      if (methods.length > 1) pay.append(tabs);
-      pay.append(...panels);
-      if (reference) {
-        pay.append(el("p", { class: "muted small" },
-          `Please include "${reference}" as the payment reference so it can be matched to this invoice.`));
-      }
-    }
+    window.addEventListener("hashchange", () => location.reload());
+    load();
   </script>
 </body>
 </html>

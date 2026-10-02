@@ -1,21 +1,26 @@
 // Shared helpers for index.html and admin.html.
 
-// Items are encoded as JSON: [["Description", qty, unitPrice], ...]
-function parseItems(raw) {
-  if (!raw) return [];
+// Calls the Apps Script backend. text/plain avoids a CORS preflight, which Apps Script can't answer.
+async function api(action, payload = {}) {
+  const url = window.INVOICE_CONFIG && window.INVOICE_CONFIG.apiUrl;
+  if (!url) throw new Error("The backend URL isn't set in config.js yet.");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  let data;
   try {
-    const data = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter((row) => Array.isArray(row) && row[0])
-      .map(([desc, qty, price]) => ({
-        desc: String(desc),
-        qty: Number(qty) || 0,
-        price: Number(price) || 0,
-      }));
+    data = await res.json();
   } catch {
-    return [];
+    throw new Error("The backend returned an unexpected response.");
   }
+  if (!data.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function invoiceLink(id) {
+  return new URL(`index.html#${id}`, location.href).toString();
 }
 
 function formatMoney(amount, currency) {

@@ -7,10 +7,12 @@
   --accent: #2563eb;
   --accent-soft: #eff4ff;
   --ok: #16a34a;
+  --danger: #dc2626;
   --radius: 12px;
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -21,6 +23,7 @@ body {
 }
 
 .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+.wrap.wide { max-width: 1000px; }
 
 .card {
   background: var(--card);
@@ -33,39 +36,71 @@ body {
 h1, h2, h3 { margin: 0 0 12px; line-height: 1.25; }
 h1 { font-size: 1.6rem; }
 h2 { font-size: 1.15rem; }
+h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px; }
 .muted { color: var(--muted); }
 .small { font-size: 0.875rem; }
+.center { text-align: center; }
+.right { text-align: right; }
+.pre { white-space: pre-wrap; }
+.mt { margin-top: 28px; }
+.mt-s { margin-top: 14px; }
+.error { color: var(--danger); }
+.success { color: var(--ok); }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
 
+/* ---------- Invoice document ---------- */
 .header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .header .meta { text-align: right; }
 .meta-row { display: flex; gap: 8px; justify-content: flex-end; }
 .meta-row span:first-child { color: var(--muted); }
 
 .billto { margin-top: 24px; }
+.two-col { display: flex; gap: 48px; flex-wrap: wrap; }
+.section { margin-top: 24px; }
 
 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 
 .total-row { display: flex; justify-content: flex-end; gap: 24px; margin-top: 16px; font-size: 1.25rem; font-weight: 700; }
-
 .notes { margin-top: 20px; padding: 12px 14px; background: var(--accent-soft); border-radius: 8px; white-space: pre-wrap; }
 
-.method-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.method-tabs button {
-  border: 1px solid var(--border); background: var(--card); padding: 8px 16px;
-  border-radius: 999px; cursor: pointer; font: inherit; color: var(--text);
-}
-.method-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; }
+.banner.paid { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.banner.split { background: var(--accent-soft); border: 1px solid #c7d7fe; }
 
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.pill.open { background: #fef3c7; color: #92400e; }
+.pill.partial { background: #e0e7ff; color: #3730a3; }
+.pill.paid { background: #dcfce7; color: #166534; }
+.pill.disabled { background: #f3f4f6; color: #6b7280; }
+
+.toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.print-only { display: none; }
+.print-method { margin-bottom: 10px; }
+
+/* ---------- Payment cards ---------- */
 .field {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 0; border-bottom: 1px solid var(--border);
 }
-.field:last-child { border-bottom: 0; }
+.field:last-of-type { border-bottom: 0; }
 .field .label { font-size: 0.8rem; color: var(--muted); }
 .field .value { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
+.confirm-form { margin-top: 16px; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-block; border: 0; background: var(--accent); color: #fff; padding: 10px 18px;
+  border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; text-decoration: none;
+}
+.btn.secondary { background: var(--card); color: var(--accent); border: 1px solid var(--accent); }
+.btn.ok { background: var(--ok); }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.small-btn { padding: 6px 12px; font-size: 0.85rem; font-weight: 500; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.btn-row.tight { margin-top: 8px; }
 
 .copy-btn {
   flex-shrink: 0; border: 1px solid var(--border); background: var(--card); color: var(--accent);
@@ -73,15 +108,19 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 }
 .copy-btn:hover { background: var(--accent-soft); }
 .copy-btn.copied { color: var(--ok); border-color: var(--ok); }
+.copy-btn.danger { color: var(--danger); }
+.copy-btn.danger:hover { background: #fef2f2; }
+.copy-btn:disabled { opacity: 0.5; cursor: default; }
+a.copy-btn { text-decoration: none; display: inline-block; }
 
-.btn {
-  display: inline-block; border: 0; background: var(--accent); color: #fff; padding: 10px 18px;
-  border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; text-decoration: none;
+.method-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.method-tabs button {
+  border: 1px solid var(--border); background: var(--card); padding: 8px 16px;
+  border-radius: 999px; cursor: pointer; font: inherit; color: var(--text);
 }
-.btn.secondary { background: var(--card); color: var(--accent); border: 1px solid var(--accent); }
-.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.method-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* Generator form */
+/* ---------- Admin ---------- */
 label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; }
 input, textarea, select {
   width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
@@ -90,25 +129,46 @@ input, textarea, select {
 textarea { min-height: 70px; resize: vertical; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .grid .full { grid-column: 1 / -1; }
-.item-row { display: grid; grid-template-columns: 1fr 80px 120px 36px; gap: 8px; margin-bottom: 8px; }
+.item-row { display: grid; gap: 8px; margin-bottom: 8px; }
 .icon-btn {
   border: 1px solid var(--border); background: var(--card); border-radius: 8px; cursor: pointer;
   font-size: 1.1rem; color: var(--muted);
 }
+.choice { display: flex; gap: 10px; flex-wrap: wrap; }
+.choice label {
+  display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;
+}
+.choice label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { width: auto; margin: 0; }
+.total-line { font-size: 1.1rem; }
 .output { margin-top: 16px; display: flex; gap: 8px; }
 .output input { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.85rem; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.topbar h1 { margin: 0; }
+.table-scroll { overflow-x: auto; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions .copy-btn { padding: 4px 9px; font-size: 0.8rem; }
+.num-left { font-weight: 600; white-space: nowrap; }
+.method-box { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.method-box .fields { margin-top: 4px; }
 
 @media (max-width: 560px) {
   .card { padding: 20px; }
   .header .meta { text-align: left; }
   .meta-row { justify-content: flex-start; }
   .grid { grid-template-columns: 1fr; }
-  .item-row { grid-template-columns: 1fr 60px 90px 36px; }
 }
 
+/* ---------- PDF / print: only the invoice document ---------- */
 @media print {
-  body { background: #fff; }
-  .card { border: 0; padding: 0; }
-  .no-print, .copy-btn { display: none !important; }
-  .pay-panel[hidden] { display: block !important; }
+  /* Zero page margin removes the browser's own header/footer (URL, date, page numbers). */
+  @page { size: auto; margin: 0; }
+  body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .wrap { max-width: none; padding: 16mm 18mm; }
+  .card { border: 0; padding: 0; margin: 0; }
+  .no-print, .copy-btn, .btn { display: none !important; }
+  .print-only { display: block; }
+  .print-method, tr { break-inside: avoid; }
 }

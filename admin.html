@@ -4,154 +4,309 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Invoice Link Generator</title>
+  <title>Invoice Admin</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="wrap">
-    <form class="card" id="form" autocomplete="off">
-      <h1>Invoice Link Generator</h1>
-      <p class="muted small">Fill in the fields and click <strong>Generate Link</strong> to get a ready-to-send invoice URL.</p>
-
-      <div class="grid">
-        <div>
-          <label for="inv">Invoice number</label>
-          <input id="inv" placeholder="INV-001" />
-        </div>
-        <div>
-          <label for="cur">Currency</label>
-          <select id="cur">
-            <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
-            <option>AUD</option><option>JPY</option><option>KRW</option><option>SGD</option>
-          </select>
-        </div>
-        <div>
-          <label for="client">Client name</label>
-          <input id="client" placeholder="Acme Corp" />
-        </div>
-        <div>
-          <label for="client_email">Client email (optional)</label>
-          <input id="client_email" type="email" placeholder="billing@acme.com" />
-        </div>
-        <div>
-          <label for="date">Invoice date</label>
-          <input id="date" type="date" />
-        </div>
-        <div>
-          <label for="due">Due date</label>
-          <input id="due" type="date" />
-        </div>
-
-        <div class="full">
-          <label>Line items</label>
-          <div class="item-row muted small" style="margin-bottom:4px">
-            <span>Description</span><span>Qty</span><span>Rate</span><span></span>
-          </div>
-          <div id="items"></div>
-          <button type="button" class="btn secondary" id="addItem">+ Add item</button>
-        </div>
-
-        <div>
-          <label for="total">Total override (optional)</label>
-          <input id="total" type="number" step="0.01" min="0" placeholder="Auto from items" />
-        </div>
-        <div>
-          <label>Calculated total</label>
-          <input id="calc" readonly tabindex="-1" />
-        </div>
-
-        <div class="full">
-          <label for="notes">Notes (optional)</label>
-          <textarea id="notes" placeholder="Thank you for your business!"></textarea>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button type="submit" class="btn">Generate Link</button>
-        <button type="button" class="btn secondary" id="reset">Clear</button>
-      </div>
-
-      <div id="result" hidden>
-        <div class="output">
-          <input id="link" readonly />
-          <button type="button" class="copy-btn" id="copyLink">Copy</button>
-        </div>
-        <div class="btn-row">
-          <a class="btn secondary" id="openLink" target="_blank" rel="noopener">Open invoice</a>
-        </div>
-      </div>
+  <main class="wrap wide">
+    <!-- Sign in -->
+    <form class="card" id="login" hidden>
+      <h1>Invoice Admin</h1>
+      <p class="muted small">Enter the admin key that the <code>setup</code> function printed in Apps Script.</p>
+      <label for="key">Admin key</label>
+      <input id="key" type="password" autocomplete="current-password" />
+      <div class="btn-row"><button class="btn" type="submit">Sign in</button></div>
+      <p class="small error" id="loginError"></p>
     </form>
+
+    <div id="admin" hidden>
+      <div class="topbar">
+        <div class="method-tabs" id="tabs">
+          <button type="button" data-tab="create" class="active">New invoice</button>
+          <button type="button" data-tab="list">Invoices</button>
+          <button type="button" data-tab="settings">Payment settings</button>
+        </div>
+        <button type="button" class="btn secondary small-btn" id="logout">Sign out</button>
+      </div>
+
+      <!-- New invoice -->
+      <form class="card" id="tab-create" autocomplete="off">
+        <h1>New weekly invoice</h1>
+        <div class="grid">
+          <div><label for="inv">Invoice number</label><input id="inv" placeholder="INV-001" /></div>
+          <div>
+            <label for="cur">Currency</label>
+            <select id="cur">
+              <option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option>
+              <option>AUD</option><option>JPY</option><option>KRW</option><option>SGD</option>
+            </select>
+          </div>
+          <div><label for="client">Client name</label><input id="client" placeholder="Acme Corp" /></div>
+          <div><label for="client_email">Client email (optional)</label><input id="client_email" type="email" placeholder="billing@acme.com" /></div>
+          <div><label for="weekStart">Week from</label><input id="weekStart" type="date" /></div>
+          <div><label for="weekEnd">Week to</label><input id="weekEnd" type="date" /></div>
+          <div><label for="date">Invoice date</label><input id="date" type="date" /></div>
+          <div><label for="due">Due date (optional)</label><input id="due" type="date" /></div>
+
+          <div class="full">
+            <label for="work">Work completed this week</label>
+            <textarea id="work" rows="6" placeholder="- Built the checkout page&#10;- Fixed login bug&#10;- Weekly sync with the team"></textarea>
+          </div>
+
+          <div class="full">
+            <label>Payment</label>
+            <div class="choice" id="payMode">
+              <label><input type="radio" name="payMode" value="paypal" checked /> PayPal only</label>
+              <label><input type="radio" name="payMode" value="ach" /> ACH (Payoneer) only</label>
+              <label><input type="radio" name="payMode" value="both" /> Split: PayPal + ACH</label>
+            </div>
+          </div>
+          <div id="paypalAmountBox"><label for="paypalAmount">PayPal amount</label><input id="paypalAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
+          <div id="achAmountBox"><label for="achAmount">ACH amount</label><input id="achAmount" type="number" step="0.01" min="0" placeholder="0.00" /></div>
+          <div class="full total-line">Total: <strong id="calc"></strong></div>
+
+          <div class="full">
+            <label>Custom fields <span class="muted">(optional – shown next to the invoice number, e.g. "Contract", "PO number")</span></label>
+            <div id="custom"></div>
+            <button type="button" class="btn secondary small-btn" id="addCustom">+ Add field</button>
+          </div>
+
+          <div class="full"><label for="notes">Notes (optional)</label><textarea id="notes" placeholder="Thank you!"></textarea></div>
+        </div>
+
+        <div class="btn-row">
+          <button type="submit" class="btn" id="generate">Generate Link</button>
+          <button type="button" class="btn secondary" id="clearForm">Clear</button>
+        </div>
+        <p class="small error" id="createError"></p>
+
+        <div id="result" hidden>
+          <div class="output">
+            <input id="link" readonly />
+            <button type="button" class="copy-btn" id="copyLink">Copy</button>
+          </div>
+          <div class="btn-row"><a class="btn secondary" id="openLink" target="_blank" rel="noopener">Open invoice</a></div>
+        </div>
+      </form>
+
+      <!-- Invoice list -->
+      <section class="card" id="tab-list" hidden>
+        <div class="topbar">
+          <h1>Invoices</h1>
+          <button type="button" class="btn secondary small-btn" id="refresh">Refresh</button>
+        </div>
+        <p class="small error" id="listError"></p>
+        <div id="list"></div>
+      </section>
+
+      <!-- Settings -->
+      <form class="card" id="tab-settings" hidden autocomplete="off">
+        <h1>Payment settings</h1>
+        <p class="muted small">Stored in your private backend. Clients only see the method(s) you put on their invoice.</p>
+
+        <h2>Your business</h2>
+        <div class="grid">
+          <div><label for="bizName">Name</label><input id="bizName" /></div>
+          <div><label for="bizEmail">Email</label><input id="bizEmail" type="email" /></div>
+          <div class="full"><label for="bizAddress">Address (optional)</label><textarea id="bizAddress"></textarea></div>
+        </div>
+
+        <h2 class="mt">Notifications</h2>
+        <div class="grid">
+          <div>
+            <label for="notifyEmail">Email me at</label>
+            <input id="notifyEmail" type="email" placeholder="Defaults to your Google account" />
+          </div>
+          <div>
+            <label for="ntfyTopic">ntfy.sh topic (optional phone push)</label>
+            <input id="ntfyTopic" placeholder="e.g. invoices-k38fj2x9" />
+          </div>
+        </div>
+
+        <h2 class="mt">PayPal</h2>
+        <div class="method-box" id="paypalBox"></div>
+        <h2 class="mt">ACH bank transfer (Payoneer receiving account)</h2>
+        <div class="method-box" id="achBox"></div>
+        <p class="muted small">Amount and payment reference are added automatically. The optional button link must start with https:// and can use
+          <code>{amount}</code>, <code>{currency}</code> and <code>{invoice}</code>, e.g. <code>https://paypal.me/yourname/{amount}{currency}</code>.</p>
+
+        <div class="btn-row"><button type="submit" class="btn" id="saveSettings">Save settings</button></div>
+        <p class="small" id="settingsStatus"></p>
+      </form>
+    </div>
   </main>
 
   <script src="config.js"></script>
   <script src="invoice.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
-    const itemsBox = $("items");
+    const isoDate = (d) => d.toLocaleDateString("en-CA");
+    const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoDate(d); };
+    const METHOD_NAMES = { paypal: "PayPal", ach: "ACH" };
+    let adminKey = localStorage.getItem("invoiceAdminKey") || "";
 
-    $("cur").value = (window.INVOICE_CONFIG.defaultCurrency || "USD").toUpperCase();
-    $("date").value = new Date().toLocaleDateString("en-CA");
+    const adminApi = (action, payload = {}) => api(action, { key: adminKey, ...payload });
 
-    function addItem(desc = "", qty = 1, price = "") {
-      const row = el("div", { class: "item-row" },
-        el("input", { placeholder: "Service or product", "data-f": "desc" }),
-        el("input", { type: "number", step: "any", min: "0", "data-f": "qty" }),
-        el("input", { type: "number", step: "0.01", min: "0", placeholder: "0.00", "data-f": "price" }),
-        el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×"),
-      );
-      row.querySelector('[data-f="desc"]').value = desc;
-      row.querySelector('[data-f="qty"]').value = qty;
-      row.querySelector('[data-f="price"]').value = price;
-      row.querySelector("button").addEventListener("click", () => { row.remove(); updateCalc(); });
-      itemsBox.append(row);
+    // A list of input rows that can be added and removed. cols: [{ placeholder, width }]
+    function rowEditor(container, cols) {
+      const template = [...cols.map((c) => c.width || "1fr"), "36px"].join(" ");
+      return {
+        add(values = []) {
+          const inputs = cols.map((c, i) => {
+            const input = el("input", { placeholder: c.placeholder || "" });
+            input.value = values[i] ?? "";
+            return input;
+          });
+          const remove = el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×");
+          const row = el("div", { class: "item-row", style: `grid-template-columns:${template}` }, ...inputs, remove);
+          remove.addEventListener("click", () => row.remove());
+          container.append(row);
+        },
+        read() {
+          return [...container.querySelectorAll(":scope > .item-row")]
+            .map((row) => [...row.querySelectorAll("input")].map((input) => input.value.trim()))
+            .filter((r) => r.some(Boolean));
+        },
+        clear() { container.replaceChildren(); },
+      };
     }
 
-    function readItems() {
-      return [...itemsBox.querySelectorAll(".item-row")]
-        .map((r) => [
-          r.querySelector('[data-f="desc"]').value.trim(),
-          Number(r.querySelector('[data-f="qty"]').value) || 0,
-          Number(r.querySelector('[data-f="price"]').value) || 0,
-        ])
-        .filter(([desc]) => desc);
+    // ---------- Sign in ----------
+    async function signIn(key) {
+      adminKey = key;
+      await adminApi("verify");
+      localStorage.setItem("invoiceAdminKey", key);
+      $("login").hidden = true;
+      $("admin").hidden = false;
+      loadSettings();
     }
 
-    function updateCalc() {
-      const sum = readItems().reduce((s, [, q, pr]) => s + q * pr, 0);
-      $("calc").value = formatMoney(sum, $("cur").value);
-    }
-
-    function buildLink() {
-      const base = new URL("index.html", location.href);
-      const params = new URLSearchParams();
-      const set = (k, v) => { if (v !== "" && v != null) params.set(k, v); };
-
-      set("inv", $("inv").value.trim());
-      set("client", $("client").value.trim());
-      set("client_email", $("client_email").value.trim());
-      set("date", $("date").value);
-      set("due", $("due").value);
-      set("cur", $("cur").value);
-      const items = readItems();
-      if (items.length) params.set("items", JSON.stringify(items));
-      set("total", $("total").value);
-      set("notes", $("notes").value.trim());
-
-      base.search = params.toString();
-      return base.toString();
-    }
-
-    itemsBox.addEventListener("input", updateCalc);
-    $("cur").addEventListener("change", updateCalc);
-    $("addItem").addEventListener("click", () => addItem());
-
-    $("form").addEventListener("submit", (e) => {
+    $("login").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const link = buildLink();
-      $("link").value = link;
-      $("openLink").href = link;
-      $("result").hidden = false;
-      $("link").select();
+      $("loginError").textContent = "";
+      try { await signIn($("key").value.trim()); }
+      catch (err) { $("loginError").textContent = err.message; }
+    });
+
+    $("logout").addEventListener("click", () => {
+      localStorage.removeItem("invoiceAdminKey");
+      location.reload();
+    });
+
+    // ---------- Tabs ----------
+    function showTab(name) {
+      document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+      for (const t of ["create", "list", "settings"]) $(`tab-${t}`).hidden = t !== name;
+      if (name === "list") loadList();
+    }
+    document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+    // ---------- New invoice ----------
+    const custom = rowEditor($("custom"), [{ placeholder: "Label" }, { placeholder: "Value", width: "2fr" }]);
+
+    const payMode = () => document.querySelector('input[name="payMode"]:checked').value;
+
+    function readAmounts() {
+      const mode = payMode();
+      return {
+        paypal: mode !== "ach" ? Number($("paypalAmount").value) || 0 : 0,
+        ach: mode !== "paypal" ? Number($("achAmount").value) || 0 : 0,
+      };
+    }
+
+    function updatePayment() {
+      const mode = payMode();
+      $("paypalAmountBox").hidden = mode === "ach";
+      $("achAmountBox").hidden = mode === "paypal";
+      const a = readAmounts();
+      $("calc").textContent = formatMoney(a.paypal + a.ach, $("cur").value);
+    }
+
+    function setPayment(amounts) {
+      const mode = amounts.paypal && amounts.ach ? "both" : amounts.ach ? "ach" : "paypal";
+      document.querySelector(`input[name="payMode"][value="${mode}"]`).checked = true;
+      $("paypalAmount").value = amounts.paypal || "";
+      $("achAmount").value = amounts.ach || "";
+      updatePayment();
+    }
+
+    function thisWeek() {
+      const d = new Date();
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
+      const start = isoDate(d);
+      return [start, addDays(start, 6)];
+    }
+
+    function resetForm() {
+      $("tab-create").reset();
+      custom.clear();
+      const [start, end] = thisWeek();
+      $("weekStart").value = start;
+      $("weekEnd").value = end;
+      $("date").value = isoDate(new Date());
+      $("result").hidden = true;
+      $("createError").textContent = "";
+      updatePayment();
+    }
+
+    // Pre-fills the form from a past invoice, moved forward one week.
+    function nextWeekFrom(inv) {
+      resetForm();
+      for (const k of ["client", "client_email", "notes"]) $(k).value = inv[k] || "";
+      $("cur").value = inv.cur || "USD";
+      $("inv").value = (inv.inv || "").replace(/(\d+)(?!.*\d)/, (n) => String(Number(n) + 1).padStart(n.length, "0"));
+      if (inv.weekStart) $("weekStart").value = addDays(inv.weekStart, 7);
+      if (inv.weekEnd) $("weekEnd").value = addDays(inv.weekEnd, 7);
+      if (inv.due) $("due").value = addDays(inv.due, 7);
+      (inv.custom || []).forEach((r) => custom.add(r));
+      const amounts = {};
+      (inv.payments || []).forEach((p) => (amounts[p.method] = p.amount));
+      setPayment(amounts);
+    }
+
+    document.querySelectorAll('input[name="payMode"]').forEach((r) => r.addEventListener("change", updatePayment));
+    for (const id of ["paypalAmount", "achAmount"]) $(id).addEventListener("input", updatePayment);
+    $("cur").addEventListener("change", updatePayment);
+    $("addCustom").addEventListener("click", () => custom.add());
+    $("clearForm").addEventListener("click", resetForm);
+
+    $("tab-create").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("createError").textContent = "";
+      const amounts = readAmounts();
+      const mode = payMode();
+      const missing = (mode !== "ach" && !amounts.paypal) ? "PayPal" : (mode !== "paypal" && !amounts.ach) ? "ACH" : "";
+      if (missing) { $("createError").textContent = `Enter the ${missing} amount.`; return; }
+
+      $("generate").disabled = true;
+      $("generate").textContent = "Generating…";
+      try {
+        const invoice = {
+          inv: $("inv").value.trim(),
+          client: $("client").value.trim(),
+          client_email: $("client_email").value.trim(),
+          weekStart: $("weekStart").value,
+          weekEnd: $("weekEnd").value,
+          date: $("date").value,
+          due: $("due").value,
+          cur: $("cur").value,
+          work: $("work").value.trim(),
+          amounts,
+          custom: custom.read(),
+          notes: $("notes").value.trim(),
+        };
+        const { id } = await adminApi("create", { invoice });
+        const link = invoiceLink(id);
+        $("link").value = link;
+        $("openLink").href = link;
+        $("result").hidden = false;
+        $("link").select();
+      } catch (err) {
+        $("createError").textContent = err.message;
+      } finally {
+        $("generate").disabled = false;
+        $("generate").textContent = "Generate Link";
+      }
     });
 
     $("copyLink").addEventListener("click", async (e) => {
@@ -159,18 +314,166 @@
       flashCopied(e.currentTarget);
     });
 
-    $("reset").addEventListener("click", () => {
-      $("form").reset();
-      itemsBox.innerHTML = "";
-      addItem();
-      $("cur").value = (window.INVOICE_CONFIG.defaultCurrency || "USD").toUpperCase();
-      $("date").value = new Date().toLocaleDateString("en-CA");
-      $("result").hidden = true;
-      updateCalc();
+    // ---------- Invoice list ----------
+    const STATUS_LABEL = { open: "Unpaid", partial: "Partly paid", paid: "Paid", disabled: "Link disabled" };
+
+    async function loadList() {
+      $("listError").textContent = "";
+      $("list").replaceChildren(el("p", { class: "muted" }, "Loading…"));
+      try {
+        const { invoices } = await adminApi("list");
+        renderList(invoices);
+      } catch (err) {
+        $("list").replaceChildren();
+        $("listError").textContent = err.message;
+      }
+    }
+
+    function renderList(invoices) {
+      if (!invoices.length) return $("list").replaceChildren(el("p", { class: "muted" }, "No invoices yet."));
+
+      // Runs fn; a confirm() that returns false skips it.
+      const action = (label, fn, { cls = "", ask = "" } = {}) => {
+        const b = el("button", { type: "button", class: `copy-btn ${cls}` }, label);
+        b.addEventListener("click", async () => {
+          if (ask && !confirm(ask)) return;
+          b.disabled = true;
+          $("listError").textContent = "";
+          try { await fn(b); }
+          catch (err) { $("listError").textContent = err.message; }
+          finally { b.disabled = false; }
+        });
+        return b;
+      };
+      const run = (op, id) => async () => { await adminApi(op, { id }); await loadList(); };
+
+      const rows = invoices.map((r) => {
+        const inv = r.invoice || {};
+        const cur = inv.cur || "USD";
+        const link = invoiceLink(r.id);
+        const paidInfo = r.paidInfo || {};
+        const live = r.status !== "disabled";
+        const anyPaid = Object.keys(paidInfo).length > 0;
+
+        const parts = (inv.payments || []).map((p) => {
+          const paid = paidInfo[p.method];
+          return el("div", { class: "small" },
+            `${METHOD_NAMES[p.method]} ${formatMoney(p.amount, cur)} `,
+            paid
+              ? el("span", { class: "success" }, `✓ ${new Date(paid.at).toLocaleDateString()}${paid.reference ? ` · ${paid.reference}` : ""}`)
+              : el("span", { class: "muted" }, "· waiting"));
+        });
+
+        const week = [inv.weekStart, inv.weekEnd].filter(Boolean).map(formatDate).join(" – ");
+        const actions = el("div", { class: "actions" },
+          live && action("Copy link", async (b) => { await copyText(link); flashCopied(b); }),
+          live && el("a", { class: "copy-btn", href: link, target: "_blank", rel: "noopener" }, "Open"),
+          anyPaid && action("Reset payments", run("reset", r.id), { ask: "Mark this invoice as unpaid again?" }),
+          live
+            ? action("Disable link", run("disable", r.id))
+            : action("Enable link", run("enable", r.id)),
+          action("New link", run("rotate", r.id), { ask: "Create a new link for this invoice? The current link will stop working." }),
+          action("Next week", async () => { nextWeekFrom(inv); showTab("create"); }),
+          action("Delete", run("remove", r.id), { cls: "danger", ask: `Delete invoice ${inv.inv || ""}? This can't be undone.` }),
+        );
+
+        return el("tr", {},
+          el("td", {}, el("strong", {}, inv.inv || "—"), el("div", { class: "muted small" }, week)),
+          el("td", {}, inv.client || "—"),
+          el("td", {}, el("div", { class: "num-left" }, formatMoney(inv.total || 0, cur)), ...parts),
+          el("td", {}, el("span", { class: `pill ${r.status}` }, STATUS_LABEL[r.status] || r.status)),
+          el("td", {}, actions),
+        );
+      });
+
+      $("list").replaceChildren(el("div", { class: "table-scroll" }, el("table", {},
+        el("thead", {}, el("tr", {},
+          el("th", {}, "Invoice"), el("th", {}, "Client"), el("th", {}, "Amount"),
+          el("th", {}, "Status"), el("th", {}, "Actions"),
+        )),
+        el("tbody", {}, ...rows),
+      )));
+    }
+
+    $("refresh").addEventListener("click", loadList);
+
+    // ---------- Settings ----------
+    const methodEditors = {};
+
+    function buildMethodBox(key, m) {
+      const box = $(`${key}Box`);
+      const link = el("input", { placeholder: "Button link (optional)", "data-f": "link" });
+      link.value = m.link || "";
+      const fieldsBox = el("div", { class: "fields" });
+      const fields = rowEditor(fieldsBox, [{ placeholder: "Label, e.g. Account number" }, { placeholder: "Value", width: "2fr" }]);
+      m.fields.forEach((f) => fields.add(f));
+      const addField = el("button", { type: "button", class: "btn secondary small-btn" }, "+ Add field");
+      addField.addEventListener("click", () => fields.add());
+      methodEditors[key] = { link, fields };
+      box.replaceChildren(
+        el("label", {}, "Fields shown to the client (each gets a Copy button)"),
+        fieldsBox,
+        el("div", { class: "btn-row tight" }, addField),
+        el("label", { class: "mt-s" }, "Pay button link"),
+        link,
+      );
+    }
+
+    function readSettings() {
+      const method = (key) => ({ link: methodEditors[key].link.value.trim(), fields: methodEditors[key].fields.read() });
+      return {
+        business: { name: $("bizName").value.trim(), email: $("bizEmail").value.trim(), address: $("bizAddress").value.trim() },
+        notifyEmail: $("notifyEmail").value.trim(),
+        ntfyTopic: $("ntfyTopic").value.trim(),
+        paypal: method("paypal"),
+        ach: method("ach"),
+      };
+    }
+
+    function fillSettings(s) {
+      $("bizName").value = s.business.name;
+      $("bizEmail").value = s.business.email;
+      $("bizAddress").value = s.business.address;
+      $("notifyEmail").value = s.notifyEmail;
+      $("ntfyTopic").value = s.ntfyTopic;
+      buildMethodBox("paypal", s.paypal);
+      buildMethodBox("ach", s.ach);
+    }
+
+    async function loadSettings() {
+      try { fillSettings((await adminApi("getSettings")).settings); }
+      catch (err) { $("settingsStatus").textContent = err.message; $("settingsStatus").className = "small error"; }
+    }
+
+    $("tab-settings").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const status = $("settingsStatus");
+      const draft = readSettings();
+      const bad = ["paypal", "ach"].find((k) => draft[k].link && !/^https:\/\//i.test(draft[k].link));
+      if (bad) {
+        status.textContent = `The ${METHOD_NAMES[bad]} button link must start with https://`;
+        status.className = "small error";
+        return;
+      }
+      status.textContent = "Saving…"; status.className = "small muted";
+      try {
+        fillSettings((await adminApi("saveSettings", { settings: draft })).settings);
+        status.textContent = "Saved."; status.className = "small success";
+      } catch (err) {
+        status.textContent = err.message; status.className = "small error";
+      }
     });
 
-    addItem();
-    updateCalc();
+    // ---------- Start ----------
+    resetForm();
+    if (!window.INVOICE_CONFIG.apiUrl) {
+      $("login").hidden = false;
+      $("loginError").textContent = "Set apiUrl in config.js first (see README).";
+    } else if (adminKey) {
+      signIn(adminKey).catch(() => { $("login").hidden = false; });
+    } else {
+      $("login").hidden = false;
+    }
   </script>
 </body>
 </html>
