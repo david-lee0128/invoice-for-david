@@ -444,7 +444,7 @@
 
         const week = [inv.weekStart, inv.weekEnd].filter(Boolean).map(formatDate).join(" – ");
         const actions = el("div", { class: "actions" },
-          !anyPaid && action("Edit", async () => editInvoice(r), { cls: "primary" }),
+          !anyPaid && action("Edit", async () => editInvoice(r)),
           live && action("Copy link", async (b) => { await copyText(link); flashCopied(b); }),
           live && el("a", { class: "copy-btn", href: link, target: "_blank", rel: "noopener" }, "Open"),
           anyPaid && action("Reset payments", run("reset", r.id), { ask: "Mark this invoice as unpaid again?" }),
