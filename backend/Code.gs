@@ -6,6 +6,8 @@ const SHEET_NAME = "Invoices";
 const HEADERS = ["id", "created", "status", "paidAt", "paidInfo", "data", "archivedAt", "disabled"];
 const COL = { id: 1, created: 2, status: 3, paidAt: 4, paidInfo: 5, data: 6, archivedAt: 7, disabled: 8 };
 const METHODS = { paypal: "PayPal", ach: "ACH bank transfer (US)" };
+// Time zone for times in notification emails (Las Vegas, Nevada = Pacific Time).
+const EMAIL_TIME_ZONE = "America/Los_Angeles";
 // Fields every method always has. Labels are fixed; extra fields can be added after them.
 const REQUIRED_FIELDS = {
   paypal: ["PayPal address"],
@@ -163,8 +165,8 @@ function notify_(inv, part, info, status) {
     "Method: " + METHODS[part.method],
     "Amount: " + money(part.amount) + " (invoice total " + money(inv.total) + ")",
     "Reference: " + (info.reference || "-"),
-    // Server time when the client confirmed, in the script's time zone (Project Settings > Time zone).
-    "Reported at: " + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MMM d, yyyy h:mm a z"),
+    // When the client confirmed, shown in Las Vegas time (PST/PDT).
+    "Reported at: " + Utilities.formatDate(new Date(), EMAIL_TIME_ZONE, "MMM d, yyyy h:mm a z") + " (Las Vegas time)",
     "",
     progress,
   ].join("\n");
