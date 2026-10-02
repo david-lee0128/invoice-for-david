@@ -161,7 +161,8 @@ function notify_(inv, part, info, status) {
     "Method: " + METHODS[part.method],
     "Amount: " + money(part.amount) + " (invoice total " + money(inv.total) + ")",
     "Reference: " + (info.reference || "-"),
-    "Reported at: " + new Date().toString(),
+    // Server time when the client confirmed, in the script's time zone (Project Settings > Time zone).
+    "Reported at: " + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MMM d, yyyy h:mm a z"),
     "",
     progress,
   ].join("\n");
@@ -199,6 +200,8 @@ function updateInvoice_(b) {
 }
 
 function invoiceProblem_(invoice) {
+  if (!invoice.inv.trim()) return "Enter an invoice number.";
+  if (!invoice.client.trim()) return "Enter the client name.";
   if (!invoice.payments.length) return "Add an amount for PayPal, ACH, or both.";
   const s = settings_();
   for (const p of invoice.payments) {

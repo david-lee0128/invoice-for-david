@@ -37,13 +37,13 @@
         <h1 id="formTitle">New weekly invoice</h1>
         <p class="hint">Fields marked with <span class="req">*</span> are required.</p>
         <div class="banner split" id="editBanner" hidden>
-          Editing <strong id="editName"></strong>. Saving keeps the same link.
+          <span>Editing <strong id="editName"></strong>. Saving keeps the same link.</span>
           <button type="button" class="copy-btn" id="cancelEdit">Cancel edit</button>
         </div>
 
         <h2 class="section-title">Invoice details</h2>
         <div class="grid">
-          <div><label for="inv">Invoice number</label><input id="inv" placeholder="INV-001" /></div>
+          <div><label for="inv">Invoice number <span class="req">*</span></label><input id="inv" placeholder="INV-001" required /></div>
           <div>
             <label for="cur">Currency</label>
             <select id="cur">
@@ -51,7 +51,7 @@
               <option>AUD</option><option>JPY</option><option>KRW</option><option>SGD</option>
             </select>
           </div>
-          <div><label for="client">Client name</label><input id="client" placeholder="Who is this invoice for?" /></div>
+          <div><label for="client">Client name <span class="req">*</span></label><input id="client" placeholder="Who is this invoice for?" required /></div>
           <div><label for="client_email">Client email <span class="opt">optional</span></label><input id="client_email" type="email" placeholder="billing@company.com" /></div>
           <div><label for="date">Invoice date</label><input id="date" type="date" /></div>
           <div><label for="due">Due date <span class="opt">optional – next day by default</span></label><input id="due" type="date" /></div>
@@ -316,7 +316,7 @@
     function editInvoice(r) {
       resetForm();
       fillForm(r.invoice || {});
-      setEditing(r.id, r.invoice.inv || "this invoice");
+      setEditing(r.id, [r.invoice.inv, r.invoice.client].filter(Boolean).join(" – ") || "this invoice");
       showTab("create");
       window.scrollTo(0, 0);
     }
