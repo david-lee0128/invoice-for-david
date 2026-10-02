@@ -174,7 +174,8 @@
     // Must match FIXED_FIELDS and REQUIRED_VALUES in backend/Code.gs.
     const FIXED_FIELDS = {
       paypal: ["PayPal address"],
-      ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
+      // Required values first, optional ones after.
+      ach: ["Beneficiary name", "Routing (ABA)", "Account number", "Account type", "Bank name", "Bank address", "SWIFT code"],
     };
     const REQUIRED_VALUES = {
       paypal: ["PayPal address"],
@@ -325,9 +326,38 @@
       $("generate").textContent = id ? "Save changes" : "Generate Link";
     }
 
+    // After an invoice is generated, these fields are remembered (in this browser) for the next one.
+    // Dates and the invoice number are always automatic; work and amounts always start empty.
+    const DEFAULTS_KEY = "invoiceFormDefaults";
+
+    function saveDefaults() {
+      localStorage.setItem(DEFAULTS_KEY, JSON.stringify({
+        client: $("client").value.trim(),
+        client_email: $("client_email").value.trim(),
+        cur: $("cur").value,
+        payMode: payMode(),
+        custom: custom.read(),
+        notes: $("notes").value.trim(),
+      }));
+    }
+
+    function applyDefaults() {
+      let d;
+      try { d = JSON.parse(localStorage.getItem(DEFAULTS_KEY) || "null"); } catch { d = null; }
+      if (!d) return;
+      $("client").value = d.client || "";
+      $("client_email").value = d.client_email || "";
+      if (d.cur) $("cur").value = d.cur;
+      const radio = document.querySelector(`input[name="payMode"][value="${d.payMode}"]`);
+      if (radio) radio.checked = true;
+      (d.custom || []).forEach((r) => custom.add(r));
+      $("notes").value = d.notes || "";
+    }
+
     function resetForm() {
       $("tab-create").reset();
       custom.clear();
+      applyDefaults();
       const [start, end] = thisWeek();
       $("weekStart").value = start;
       $("weekEnd").value = end;
@@ -417,6 +447,7 @@
           ? await adminApi("update", { id: editingId, invoice })
           : await adminApi("create", { invoice });
         const link = invoiceLink(id);
+        if (!editingId) saveDefaults();
         $("resultMsg").textContent = editingId ? "Saved. The link is unchanged." : "Invoice created.";
         $("link").value = link;
         $("openLink").href = link;
@@ -440,12 +471,21 @@
     // ---------- Invoice list ----------
     const STATUS_LABEL = { open: "Unpaid", partial: "Partly paid", paid: "Paid" };
     let archivedOpen = false;
+    let lastInvoices = [];
+    // Rows per page for each group ("all" or a number), remembered in this browser.
+    const PAGE_SIZES = ["5", "10", "15", "20", "all"];
+    const pageSize = {
+      active: localStorage.getItem("invoicePageSize.active") || "10",
+      archived: localStorage.getItem("invoicePageSize.archived") || "10",
+    };
+    const page = { active: 0, archived: 0 };
 
     async function loadList() {
       $("listError").textContent = "";
       $("list").replaceChildren(el("p", { class: "muted" }, "Loading…"));
       try {
         const { invoices } = await adminApi("list");
+        lastInvoices = invoices;
         renderList(invoices);
       } catch (err) {
         $("list").replaceChildren();
@@ -532,13 +572,48 @@
         el("tbody", {}, ...list.map(row)),
       ));
 
+      // One page of a group plus its pager.
+      const paged = (group, list) => {
+        const size = pageSize[group] === "all" ? list.length || 1 : Number(pageSize[group]);
+        const pages = Math.max(1, Math.ceil(list.length / size));
+        page[group] = Math.min(page[group], pages - 1);
+        const start = page[group] * size;
+
+        const select = el("select", { class: "page-size", "aria-label": "Invoices per page" },
+          ...PAGE_SIZES.map((v) => el("option", { value: v }, v === "all" ? "All" : v)));
+        select.value = pageSize[group];
+        select.addEventListener("change", () => {
+          pageSize[group] = select.value;
+          localStorage.setItem(`invoicePageSize.${group}`, select.value);
+          page[group] = 0;
+          renderList(lastInvoices);
+        });
+        const go = (delta) => () => { page[group] += delta; renderList(lastInvoices); };
+        const prev = el("button", { type: "button", class: "copy-btn" }, "‹ Prev");
+        const next = el("button", { type: "button", class: "copy-btn" }, "Next ›");
+        prev.disabled = page[group] === 0;
+        next.disabled = page[group] >= pages - 1;
+        prev.addEventListener("click", go(-1));
+        next.addEventListener("click", go(1));
+
+        return [
+          table(list.slice(start, start + size)),
+          el("div", { class: "pager" },
+            el("label", { class: "pager-size" }, "Show", select, "per page"),
+            el("div", { class: "pager-nav" },
+              el("span", { class: "muted small" }, `${start + 1}–${Math.min(start + size, list.length)} of ${list.length}`),
+              prev, next),
+          ),
+        ];
+      };
+
       const active = invoices.filter((r) => !r.archivedAt);
       const archived = invoices.filter((r) => r.archivedAt);
       $("list").replaceChildren(
-        active.length ? table(active) : el("p", { class: "muted" }, "No active invoices."),
+        ...(active.length ? paged("active", active) : [el("p", { class: "muted" }, "No active invoices.")]),
         el("details", { class: "archived-group", id: "archivedGroup" },
           el("summary", {}, `Archived (${archived.length})`),
-          archived.length ? table(archived) : el("p", { class: "muted small" }, "Paid invoices you archive appear here."),
+          ...(archived.length ? paged("archived", archived) : [el("p", { class: "muted small" }, "Paid invoices you archive appear here.")]),
         ),
       );
       $("archivedGroup").open = archivedOpen;

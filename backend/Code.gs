@@ -11,7 +11,8 @@ const EMAIL_TIME_ZONE = "America/Los_Angeles";
 // Fields every method always has. Labels are fixed; extra fields can be added after them.
 const FIXED_FIELDS = {
   paypal: ["PayPal address"],
-  ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
+  // Required values first, optional ones after.
+  ach: ["Beneficiary name", "Routing (ABA)", "Account number", "Account type", "Bank name", "Bank address", "SWIFT code"],
 };
 // Fixed fields that must have a value before an invoice can use the method. The rest may stay empty.
 const REQUIRED_VALUES = {

@@ -92,6 +92,10 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .pill.archived { background: #e7e5f2; color: #4b3f8a; }
 .pills { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .waiting { color: #c27a0e; font-weight: 600; }
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.pager-size { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
+.pager-size select { width: auto; padding: 7px 34px 7px 12px; background-position: right 12px center; }
+.pager-nav { display: flex; align-items: center; gap: 8px; }
 .archived-group { margin-top: 28px; border-top: 1px solid var(--divider); padding-top: 18px; }
 .archived-group summary { cursor: pointer; font-weight: 700; font-size: 0.95rem; }
 .archived-group[open] summary { margin-bottom: 4px; }
