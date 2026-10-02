@@ -169,8 +169,8 @@ function notify_(inv, part, info, status) {
     progress,
   ].join("\n");
 
-  const to = s.notifyEmail || Session.getEffectiveUser().getEmail();
-  if (to) MailApp.sendEmail(to, subject, body);
+  // No address in Payment settings means no notification email.
+  if (s.notifyEmail) MailApp.sendEmail(s.notifyEmail, subject, body);
 }
 
 // ---------- Admin ----------

@@ -4,7 +4,7 @@ A lightweight invoice page for weekly billing, hosted for free on GitHub Pages, 
 
 - **Admin page** (`admin.html`, protected by a secret key): write up the week's work, choose **PayPal only**, **ACH (Payoneer receiving account) only**, or **split across both**, and generate a link.
 - **Invoice page** (`index.html#<id>`): the client sees the work summary and only the payment method(s) on that invoice, with one-click copy buttons. They confirm each payment with an **"I've sent this payment"** button.
-- **Notifications:** you get an email every time the client confirms a payment.
+- **Notifications:** you get an email every time the client confirms a payment, sent to the address in **Payment settings → Email me at** (leave it empty for no emails).
 - **Link control:** edit an unpaid invoice (same link), reset payments to unpaid, disable or re-enable a link, issue a new link (the old one stops working), or delete the invoice.
 - **Download PDF:** the client can save a clean PDF that contains only the invoice: work, amounts and payment details, with no buttons and no browser header or footer.
 - **Next week:** copy an invoice forward one week, with the invoice number incremented.
