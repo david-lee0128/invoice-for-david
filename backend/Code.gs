@@ -91,7 +91,8 @@ function getInvoice_(b) {
   const row = findRow_(b.id);
   if (!row) return { ok: false, error: "not_found" };
   const rec = readRow_(row);
-  if (rec.disabled) return { ok: true, status: "disabled" };
+  // Archived invoices are closed, so their links stop working too.
+  if (rec.disabled || rec.archivedAt) return { ok: true, status: "disabled" };
   const s = settings_();
   const paidInfo = rec.paidInfo || {};
   return {
@@ -119,7 +120,7 @@ function markPaid_(b) {
     const row = findRow_(b.id);
     if (!row) return { ok: false, error: "not_found" };
     const rec = readRow_(row);
-    if (rec.disabled) return { ok: false, error: "This invoice link is no longer active." };
+    if (rec.disabled || rec.archivedAt) return { ok: false, error: "This invoice link is no longer active." };
     const part = (rec.invoice.payments || []).find((p) => p.method === b.method);
     if (!part) return { ok: false, error: "That payment method isn't on this invoice." };
 
@@ -250,7 +251,7 @@ function setStatus_(id, op) {
       sh.getRange(row, COL.disabled).setValue("");
     } else if (op === "archive") {
       if (rec.status !== "paid") return { ok: false, error: "Only fully paid invoices can be archived." };
-      sh.getRange(row, COL.archivedAt).setValue(new Date().toISOString());
+      sh.getRange(row, COL.archivedAt, 1, 2).setValues([[new Date().toISOString(), "1"]]);
     }
     return { ok: true };
   });
