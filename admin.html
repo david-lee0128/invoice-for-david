@@ -459,7 +459,7 @@
                 : action("Enable link", run("enable", r.id)),
               action("New link", run("rotate", r.id), { ask: "Create a new link for this invoice? The current link will stop working." }),
               paid && nextWeek,
-              paid && action("Archive", run("archive", r.id), { ask: `Archive invoice ${inv.inv || ""}? Archived invoices can't be edited or changed.` }),
+              paid && action("Archive", run("archive", r.id), { ask: `Archive invoice ${inv.inv || ""}? Its link will be disabled and it can't be edited or changed.` }),
               !anyPaid && action("Delete", run("remove", r.id), { cls: "danger", ask: `Delete invoice ${inv.inv || ""}? This can't be undone.` }),
             );
 
