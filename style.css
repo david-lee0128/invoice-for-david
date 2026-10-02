@@ -195,6 +195,7 @@ textarea { min-height: 96px; resize: vertical; }
 input.locked { background: #f1f1ee; color: var(--text); font-weight: 600; cursor: default; }
 input.locked:focus { border-color: var(--input-border); box-shadow: none; }
 .lock-mark { display: flex; align-items: center; justify-content: center; color: var(--req); font-weight: 700; }
+.lock-mark.opt-mark { color: var(--opt); font-weight: 500; font-size: 0.65rem; }
 #editBanner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 @media (max-width: 560px) {

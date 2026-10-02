@@ -9,11 +9,16 @@ const METHODS = { paypal: "PayPal", ach: "ACH bank transfer (US)" };
 // Time zone for times in notification emails (Las Vegas, Nevada = Pacific Time).
 const EMAIL_TIME_ZONE = "America/Los_Angeles";
 // Fields every method always has. Labels are fixed; extra fields can be added after them.
-const REQUIRED_FIELDS = {
+const FIXED_FIELDS = {
   paypal: ["PayPal address"],
   ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
 };
-// Older label names, mapped onto the current required labels.
+// Fixed fields that must have a value before an invoice can use the method. The rest may stay empty.
+const REQUIRED_VALUES = {
+  paypal: ["PayPal address"],
+  ach: ["Beneficiary name", "Routing (ABA)", "Account number", "Account type"],
+};
+// Older label names, mapped onto the current fixed labels.
 const LABEL_ALIASES = {
   "PayPal email": "PayPal address",
   "Account holder": "Beneficiary name",
@@ -212,10 +217,18 @@ function invoiceProblem_(invoice) {
   const s = settings_();
   for (const p of invoice.payments) {
     const missing = s[p.method].fields
-      .filter((f) => REQUIRED_FIELDS[p.method].indexOf(f[0]) !== -1 && !f[1])
+      .filter((f) => REQUIRED_VALUES[p.method].indexOf(f[0]) !== -1 && !f[1])
       .map((f) => f[0]);
     if (missing.length) return "Fill in your " + METHODS[p.method] + " details in Payment settings first (missing: " + missing.join(", ") + ").";
   }
+  return "";
+}
+
+// Format checks for fields that have one. Empty values pass; required-ness is checked separately.
+function fieldProblem_(label, value) {
+  if (!value) return "";
+  if (label === "Routing (ABA)" && !/^\d{9}$/.test(value)) return "Routing (ABA) must be exactly 9 digits.";
+  if (label === "Account type" && !/^(checking|savings)$/i.test(value)) return "Account type must be Checking or Savings.";
   return "";
 }
 
@@ -283,6 +296,12 @@ function removeInvoice_(b) {
 
 function saveSettings_(b) {
   const s = cleanSettings_(b.settings);
+  for (const key of Object.keys(METHODS)) {
+    for (const f of s[key].fields) {
+      const problem = fieldProblem_(f[0], f[1]);
+      if (problem) return { ok: false, error: problem };
+    }
+  }
   PropertiesService.getScriptProperties().setProperty("SETTINGS", JSON.stringify(s));
   return { ok: true, settings: s };
 }
@@ -364,8 +383,8 @@ function defaultSettings_() {
   return {
     business: { name: "", email: "", address: "" },
     notifyEmail: "",
-    paypal: { fields: REQUIRED_FIELDS.paypal.map((l) => [l, ""]) },
-    ach: { fields: REQUIRED_FIELDS.ach.map((l) => [l, l === "Account type" ? "Checking" : ""]) },
+    paypal: { fields: FIXED_FIELDS.paypal.map((l) => [l, ""]) },
+    ach: { fields: FIXED_FIELDS.ach.map((l) => [l, l === "Account type" ? "Checking" : ""]) },
   };
 }
 
@@ -411,13 +430,13 @@ function cleanMethod_(key, m) {
     const label = str_(f[0], 100).trim();
     return [LABEL_ALIASES[label] || label, str_(f[1], 500).trim()];
   });
-  const required = REQUIRED_FIELDS[key];
-  const fields = required.map((label) => {
+  const fixed = FIXED_FIELDS[key];
+  const fields = fixed.map((label) => {
     const found = rows.find((r) => r[0] === label);
     return [label, found ? found[1] : ""];
   });
   rows
-    .filter((r) => required.indexOf(r[0]) === -1 && (r[0] || r[1]))
+    .filter((r) => fixed.indexOf(r[0]) === -1 && (r[0] || r[1]))
     .slice(0, 30)
     .forEach((r) => fields.push(r));
   return { fields: fields };

@@ -155,7 +155,7 @@
           <button type="button" class="icon-btn reset-btn" data-reset="ach" title="Reset to the default fields">↻</button>
         </div>
         <div class="method-box" id="achBox"></div>
-        <p class="muted small">Required fields can't be renamed or removed. ↻ removes any extra fields you added; required values are kept.
+        <p class="muted small">The listed fields can't be renamed or removed. Fields marked <span class="req">*</span> must be filled in before an invoice can use that method; optional ones can stay empty and are hidden from the client when empty. ↻ removes any extra fields you added and keeps the listed values.
           Amount and payment reference are added to every invoice automatically.</p>
 
         <div class="btn-row"><button type="submit" class="btn" id="saveSettings">Save settings</button></div>
@@ -171,11 +171,28 @@
     const isoDate = (d) => d.toLocaleDateString("en-CA");
     const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoDate(d); };
     const METHOD_NAMES = { paypal: "PayPal", ach: "ACH" };
-    // Must match REQUIRED_FIELDS in backend/Code.gs.
-    const REQUIRED_FIELDS = {
+    // Must match FIXED_FIELDS and REQUIRED_VALUES in backend/Code.gs.
+    const FIXED_FIELDS = {
       paypal: ["PayPal address"],
       ach: ["Beneficiary name", "Bank name", "Bank address", "Routing (ABA)", "SWIFT code", "Account number", "Account type"],
     };
+    const REQUIRED_VALUES = {
+      paypal: ["PayPal address"],
+      ach: ["Beneficiary name", "Routing (ABA)", "Account number", "Account type"],
+    };
+    const FIELD_HINTS = {
+      "Beneficiary name": "Recipient's full legal name",
+      "Routing (ABA)": "9-digit routing number",
+      "Account type": "Checking or Savings",
+    };
+
+    // Same checks as fieldProblem_ in backend/Code.gs.
+    function fieldProblem(label, value) {
+      if (!value) return "";
+      if (label === "Routing (ABA)" && !/^\d{9}$/.test(value)) return "Routing (ABA) must be exactly 9 digits.";
+      if (label === "Account type" && !/^(checking|savings)$/i.test(value)) return "Account type must be Checking or Savings.";
+      return "";
+    }
     let adminKey = localStorage.getItem("invoiceAdminKey") || "";
     let editingId = null;
     let dueTouched = false;
@@ -186,7 +203,7 @@
     function rowEditor(container, cols) {
       const template = [...cols.map((c) => c.width || "1fr"), "36px"].join(" ");
       return {
-        add(values = [], { locked = false } = {}) {
+        add(values = [], { locked = false, required = false, hint = "" } = {}) {
           const inputs = cols.map((c, i) => {
             const input = el("input", { placeholder: c.placeholder || "" });
             input.value = values[i] ?? "";
@@ -196,7 +213,10 @@
           if (locked) {
             inputs[0].readOnly = true;
             inputs[0].classList.add("locked");
-            side = el("span", { class: "lock-mark", title: "Required" }, "*");
+            inputs[1].placeholder = hint || (required ? "Required" : "Optional");
+            side = required
+              ? el("span", { class: "lock-mark", title: "Required" }, "*")
+              : el("span", { class: "lock-mark opt-mark", title: "Optional" }, "optional");
           } else {
             side = el("button", { type: "button", class: "icon-btn", title: "Remove" }, "×");
           }
@@ -509,10 +529,14 @@
       const box = $(`${key}Box`);
       const fieldsBox = el("div", { class: "fields" });
       const editor = rowEditor(fieldsBox, [{ placeholder: "Label" }, { placeholder: "Value", width: "2fr" }]);
-      const required = REQUIRED_FIELDS[key];
+      const fixed = FIXED_FIELDS[key];
       const valueOf = (label) => (fields.find(([l]) => l === label) || [])[1] || "";
-      required.forEach((label) => editor.add([label, valueOf(label)], { locked: true }));
-      fields.filter(([l]) => !required.includes(l)).forEach((f) => editor.add(f));
+      fixed.forEach((label) => editor.add([label, valueOf(label)], {
+        locked: true,
+        required: REQUIRED_VALUES[key].includes(label),
+        hint: FIELD_HINTS[label],
+      }));
+      fields.filter(([l]) => !fixed.includes(l)).forEach((f) => editor.add(f));
       methodEditors[key] = editor;
 
       const addField = el("button", { type: "button", class: "btn secondary small-btn" }, "+ Add field");
@@ -526,7 +550,7 @@
 
     document.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", () => {
       const key = b.dataset.reset;
-      const kept = methodEditors[key].read().filter(([l]) => REQUIRED_FIELDS[key].includes(l));
+      const kept = methodEditors[key].read().filter(([l]) => FIXED_FIELDS[key].includes(l));
       buildMethodBox(key, kept);
     }));
 
@@ -561,9 +585,12 @@
         $("bizName").focus();
         return;
       }
+      const draft = readSettings();
+      const problem = [...draft.paypal.fields, ...draft.ach.fields].map(([l, v]) => fieldProblem(l, v)).find(Boolean);
+      if (problem) { status.textContent = problem; status.className = "small error"; return; }
       status.textContent = "Saving…"; status.className = "small muted";
       try {
-        fillSettings((await adminApi("saveSettings", { settings: readSettings() })).settings);
+        fillSettings((await adminApi("saveSettings", { settings: draft })).settings);
         status.textContent = "Saved."; status.className = "small success";
       } catch (err) {
         status.textContent = err.message; status.className = "small error";
